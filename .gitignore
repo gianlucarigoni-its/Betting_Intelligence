@@ -10,3 +10,4 @@ data/*.sqlite3
 output/
 .vscode/
 .idea/
+progress_it.md
