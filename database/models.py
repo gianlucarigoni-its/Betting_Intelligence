@@ -194,6 +194,151 @@ class Prediction(Base):
     )
 
 
+class HistoricalDataImport(Base):
+    __tablename__ = "historical_data_imports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    dataset_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    imported_at: Mapped[str | None] = mapped_column(String(30), server_default=func.datetime("now"))
+    matches_imported: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    odds_imported: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ratings_imported: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class TeamRatingSnapshot(Base):
+    __tablename__ = "team_rating_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), nullable=False)
+    source_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    rating_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    rating_value: Mapped[float] = mapped_column(Float, nullable=False)
+    snapshot_date: Mapped[str] = mapped_column(String(30), nullable=False)
+    valid_from: Mapped[str | None] = mapped_column(String(30))
+    valid_to: Mapped[str | None] = mapped_column(String(30))
+    created_at: Mapped[str | None] = mapped_column(String(30), server_default=func.datetime("now"))
+
+    team = relationship("Team")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "team_id",
+            "source_name",
+            "rating_type",
+            "snapshot_date",
+            name="uq_team_rating_snapshot_identity",
+        ),
+    )
+
+
+class HistoricalOddSnapshot(Base):
+    __tablename__ = "historical_odd_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), nullable=False)
+    bookmaker_id: Mapped[int | None] = mapped_column(ForeignKey("bookmakers.id"))
+    source_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    market_level: Mapped[int] = mapped_column(Integer, nullable=False)
+    market_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    market_category: Mapped[str] = mapped_column(String(50), nullable=False)
+    selection: Mapped[str] = mapped_column(String(50), nullable=False)
+    odd_value: Mapped[float] = mapped_column(Float, nullable=False)
+    implied_prob: Mapped[float] = mapped_column(Float, nullable=False)
+    overround_pct: Mapped[float | None] = mapped_column(Float)
+    snapshot_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    is_opening: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_closing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str | None] = mapped_column(String(30), server_default=func.datetime("now"))
+
+    match = relationship("Match")
+    bookmaker = relationship("Bookmaker")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "match_id",
+            "bookmaker_id",
+            "market_type",
+            "selection",
+            "snapshot_time",
+            name="uq_historical_odd_snapshot_identity",
+        ),
+    )
+
+
+class BacktestRun(Base):
+    __tablename__ = "backtest_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    model_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    strategy_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    started_at: Mapped[str | None] = mapped_column(String(30), server_default=func.datetime("now"))
+    completed_at: Mapped[str | None] = mapped_column(String(30))
+    train_start_date: Mapped[str | None] = mapped_column(String(30))
+    train_end_date: Mapped[str | None] = mapped_column(String(30))
+    test_start_date: Mapped[str] = mapped_column(String(30), nullable=False)
+    test_end_date: Mapped[str] = mapped_column(String(30), nullable=False)
+    initial_bankroll: Mapped[float] = mapped_column(Float, nullable=False)
+    final_bankroll: Mapped[float | None] = mapped_column(Float)
+    total_bets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    winning_bets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    losing_bets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    push_bets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_staked: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    profit_loss: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    roi_pct: Mapped[float | None] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    bets = relationship("BacktestBet", back_populates="backtest_run")
+
+
+class BacktestBet(Base):
+    __tablename__ = "backtest_bets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    backtest_run_id: Mapped[int] = mapped_column(ForeignKey("backtest_runs.id"), nullable=False)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), nullable=False)
+    prediction_id: Mapped[int | None] = mapped_column(ForeignKey("predictions.id"))
+    bookmaker_id: Mapped[int | None] = mapped_column(ForeignKey("bookmakers.id"))
+    market_level: Mapped[int] = mapped_column(Integer, nullable=False)
+    market_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    market_category: Mapped[str] = mapped_column(String(50), nullable=False)
+    selection: Mapped[str] = mapped_column(String(50), nullable=False)
+    model_probability: Mapped[float] = mapped_column(Float, nullable=False)
+    bookmaker_probability: Mapped[float] = mapped_column(Float, nullable=False)
+    bookmaker_odds: Mapped[float] = mapped_column(Float, nullable=False)
+    edge_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    expected_value: Mapped[float | None] = mapped_column(Float)
+    stake: Mapped[float] = mapped_column(Float, nullable=False)
+    potential_profit: Mapped[float] = mapped_column(Float, nullable=False)
+    result: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    profit_loss: Mapped[float | None] = mapped_column(Float)
+    bankroll_before: Mapped[float | None] = mapped_column(Float)
+    bankroll_after: Mapped[float | None] = mapped_column(Float)
+    placed_at: Mapped[str | None] = mapped_column(String(30))
+    settled_at: Mapped[str | None] = mapped_column(String(30))
+    reason: Mapped[str | None] = mapped_column(Text)
+
+    backtest_run = relationship("BacktestRun", back_populates="bets")
+    match = relationship("Match")
+    prediction = relationship("Prediction")
+    bookmaker = relationship("Bookmaker")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "backtest_run_id",
+            "match_id",
+            "market_type",
+            "selection",
+            name="uq_backtest_bet_identity",
+        ),
+    )
+
+
 class ScrapingLog(Base):
     __tablename__ = "scraping_log"
 

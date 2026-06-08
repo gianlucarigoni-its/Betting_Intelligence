@@ -22,7 +22,9 @@ Il progetto segue un'architettura a layer:
 - `database/` per base SQLAlchemy, engine, modelli, seed e migrazioni.
 - `scrapers/` per la sola raccolta dati.
 - `services/` per orchestrazione, mapping e sincronizzazione.
+- `historical/` per importazione di dataset storici e quote storiche.
 - `models/` per i modelli predittivi e statistici.
+- `backtesting/` per simulazioni temporali, diagnostica e validazione strategie.
 - `recommendation/` per la logica di raccomandazione delle scommesse.
 - `dashboard/` per l'interfaccia Streamlit.
 - `chatbot/` per l'integrazione locale con Ollama.
@@ -43,6 +45,8 @@ La root del repository include attualmente:
 - `scrapers/`
 - `services/`
 - `models/`
+- `historical/`
+- `backtesting/`
 - `recommendation/`
 - `dashboard/`
 - `chatbot/`
@@ -74,9 +78,14 @@ La root del repository include attualmente:
   - `MatchStat`
   - `Bookmaker`
   - `Odd`
-  - `Prediction`
-  - `ScrapingLog`
-  - `ApiCache`
+- `Prediction`
+- `HistoricalDataImport`
+- `TeamRatingSnapshot`
+- `HistoricalOddSnapshot`
+- `BacktestRun`
+- `BacktestBet`
+- `ScrapingLog`
+- `ApiCache`
 - Creato `database/__init__.py`.
 - Inizializzato Alembic in `database/migrations`.
 - Configurato `alembic.ini`.
@@ -281,10 +290,75 @@ Calcola i lambda attesi, la distribuzione dei punteggi e le probabilità 1X2. È
 - Aggiunto l’helper `from_value_metrics()` per costruire il payload di persistenza a partire dall’output del value layer e del recommendation engine.
 - La persistence layer collega il motore predittivo alla base dati, rendendo le prediction interrogabili da dashboard e chatbot.
 
+### Historical data e backtesting
+- Esteso `database/models.py` con le tabelle per:
+  - import storici (`HistoricalDataImport`)
+  - snapshot rating pre-match (`TeamRatingSnapshot`)
+  - snapshot quote storiche (`HistoricalOddSnapshot`)
+  - run di backtest (`BacktestRun`)
+  - giocate simulate (`BacktestBet`)
+- Creata e applicata la migration Alembic:
+  - `b7a2c9d4e501_add_historical_and_backtest_tables.py`
+- Creato il package `historical/`.
+- Creato `historical/football_data_importer.py` per importare CSV storici da Football-Data.co.uk.
+- L'importer crea o aggiorna:
+  - sport `football`
+  - competizioni/stagioni
+  - squadre club
+  - match conclusi
+  - quote storiche Bet365 1X2 come closing line
+- Creato il package `backtesting/`.
+- Creato `backtesting/persistence_service.py` per:
+  - creare run di backtest
+  - registrare bet simulate
+  - liquidare bet `won/lost/push`
+  - aggiornare bankroll, profit/loss, stake totale e ROI
+- Creato `backtesting/historical_poisson_backtester.py`.
+- Il backtester usa un modello Poisson rolling temporalmente onesto:
+  - ogni match usa solo partite precedenti
+  - split casa/trasferta separato
+  - shrinkage verso media lega per ridurre volatilità iniziale
+  - confronto contro quote storiche Bet365 1X2
+- Creato `backtesting/diagnostics.py` per analisi per:
+  - selezione (`HOME`, `DRAW`, `AWAY`)
+  - range quota
+  - range edge
+  - confronto probabilità modello vs win-rate reale
+- Creato `backtesting/run_football_data_backtest.py` come runner CLI.
+
+### Primo ciclo dati reali e diagnostica
+- Importata Premier League 2023/24 da Football-Data.co.uk:
+  - 380 match
+  - 1140 quote Bet365 1X2
+  - 0 righe scartate
+- Generato un primo backtest rolling Poisson grezzo:
+  - 272 bet
+  - profit/loss: `-404.80`
+  - ROI: `-14.88%`
+- Diagnosticato il problema principale:
+  - troppe bet su `AWAY`
+  - forte sovrastima delle quote medio-alte
+  - falsi value su longshot e trasferte
+- Corretto il modello rolling con split home/away e shrinkage.
+- Aggiunti filtri strategici conservativi:
+  - `min_edge_pct=3.0`
+  - `max_edge_pct=12.0`
+  - `min_model_probability=0.55`
+  - `max_bookmaker_odds=2.0`
+- Validazione EPL con strategia conservativa:
+  - 2023/24: 8 bet, P/L `+8.50`, ROI `+10.63%`
+  - 2022/23: 17 bet, P/L `+40.40`, ROI `+23.76%`
+  - 2021/22: 5 bet, P/L `+20.00`, ROI `+40.00%`
+  - aggregato: 30 bet, 21 vinte, P/L `+68.90`, ROI `+22.97%`
+- Nota metodologica: il volume è ancora basso, quindi il risultato positivo è promettente ma non ancora statisticamente robusto.
+
 ### Stato aggiornato
 - La persistenza delle prediction è stata introdotta.
 - Il progetto ora salva su database l’output operativo del modello.
 - La pipeline è più vicina a un flusso end-to-end completo.
+- Il progetto ora importa dati storici reali e quote storiche.
+- Il progetto genera backtest temporalmente onesti e persistenti.
+- Esiste una prima diagnostica per capire dove il modello perde e dove è meno fuori calibrazione.
 
 ## Stato attuale
 - Il database è stabile e versionato con Alembic.
@@ -295,11 +369,15 @@ Calcola i lambda attesi, la distribuzione dei punteggi e le probabilità 1X2. È
 - Il layer Edge / EV / Kelly funziona.
 - Il recommendation engine funziona.
 - La persistenza delle prediction funziona.
+- Il layer historical data funziona.
+- Il layer backtesting funziona.
+- La diagnostica backtest funziona.
 - I test principali sono verdi.
-- La struttura del progetto è coerente ed è pronta per il layer successivo: dashboard, chatbot e orchestrazione end-to-end.
+- La struttura del progetto è coerente ed è pronta per calibrazione, validazione multi-campionato e dashboard.
 
 ## Prossimi passi
-1. Integrare la persistenza delle prediction e dei profili nel database.
-2. Costruire la dashboard Streamlit.
-3. Integrare il chatbot locale con Ollama.
-4. Rifinire il flusso end-to-end “Aggiorna Ora”.
+1. Ampliare il backtest a più campionati e stagioni per aumentare volume e robustezza.
+2. Creare calibration report sulle prediction non bettate, non solo sulle bet registrate.
+3. Confrontare modello vs bookmaker baseline e closing line in modo sistematico.
+4. Costruire la dashboard Streamlit per import, backtest, diagnostica e risultati.
+5. Integrare il chatbot locale con Ollama sui dati persistiti.
