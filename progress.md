@@ -14,6 +14,7 @@ Costruire un tool locale e gratuito in Python per l'analisi statistica delle sco
 - BeautifulSoup4.
 - Streamlit.
 - Plotly.
+- SciPy.
 
 ## Architettura
 Il progetto segue un'architettura a layer:
@@ -21,7 +22,7 @@ Il progetto segue un'architettura a layer:
 - `database/` per base SQLAlchemy, engine, modelli, seed e migrazioni.
 - `scrapers/` per la sola raccolta dati.
 - `services/` per orchestrazione, mapping e sincronizzazione.
-- `models/` per i modelli predittivi e statistici futuri.
+- `models/` per i modelli predittivi e statistici.
 - `recommendation/` per la logica di raccomandazione delle scommesse.
 - `dashboard/` per l'interfaccia Streamlit.
 - `chatbot/` per l'integrazione locale con Ollama.
@@ -120,10 +121,30 @@ La root del repository include attualmente:
   - `fifa_code` come identificatore calcistico stabile
 - Il layer di ingestione e sincronizzazione ELO è considerato stabile per lo schema attuale.
 
+### Feature engineering
+- Creato `models/feature_engineering.py` per generare feature pronte per il modello predittivo.
+- Implementato il calcolo delle probabilità ELO con fallback `ELO_ONLY` sotto soglia.
+- Inserite le enumerazioni:
+  - `ModelType`
+  - `ConfidenceLevel`
+- Implementato il controllo della confidenza in base al numero di partite disponibili.
+- Validata la feature extraction sul match `Spain` vs `Germany`.
+- Il feature engineering è stato verificato con successo.
+
+### Modello Poisson
+- Creato `models/poisson_model.py`.
+- Implementata la stima dei lambda casa/trasferta a partire dalle feature.
+- Generata la distribuzione di scoreline con Poisson.
+- Ricavato il mercato 1X2 dalle scoreline.
+- Aggiunto il `most_likely_score`.
+- I test del modello Poisson sono passati con successo.
+
 ### Test automatici
 - Creato `pytest.ini` per mantenere stabile il `pythonpath` durante i test.
 - Creato `tests/test_eloratings_scraper.py`.
 - Creato `tests/test_eloratings_sync_service.py`.
+- Creato `tests/test_feature_engineering.py`.
+- Creato `tests/test_poisson_model.py`.
 - Verificati con successo i casi principali del parser:
   - riga valida
   - riga corta
@@ -138,9 +159,23 @@ La root del repository include attualmente:
   - nessuna modifica
   - skip quando mancano i metadati
   - fallback tramite `fifa_code`
+- Verificati con successo i casi principali del feature engineering:
+  - somma probabilità uguale a 1
+  - simmetria tra squadre pari
+  - home advantage
+  - fallback ELO_ONLY
+- Verificati con successo i casi principali del Poisson model:
+  - output valido
+  - probabilità coerenti
+  - scoreline ordinate
+  - score più probabile presente
+  - lambda coerenti con il favorito
+  - differenza tra campo neutro e non neutro
 - Stato test attuale:
   - `tests/test_eloratings_scraper.py` → `7 passed`
   - `tests/test_eloratings_sync_service.py` → `5 passed`
+  - `tests/test_feature_engineering.py` → `17 passed`
+  - `tests/test_poisson_model.py` → `6 passed`
 
 ## File chiave e responsabilità
 ### `database/models.py`
@@ -164,6 +199,12 @@ Orchestra la sincronizzazione dai dati ELO al database. Fa matching, crea o aggi
 ### `services/mappers/country_code_mapper.py`
 Contiene il mapping autorevole tra i country code ELO e i metadati calcistici interni. È il layer principale di normalizzazione per mantenere coerente l'identità delle squadre tra fonti diverse.
 
+### `models/feature_engineering.py`
+Estrae le feature necessarie al Poisson model dal database. Traduce i dati grezzi in un oggetto `MatchFeatures` che il layer predittivo può consumare senza toccare il DB.
+
+### `models/poisson_model.py`
+Calcola i lambda attesi, la distribuzione dei punteggi e le probabilità 1X2. È il primo vero motore statistico del progetto.
+
 ## Decisioni tecniche
 - `country_code` è trattato come identificatore della sorgente, non come primary key.
 - `iso_code_2` e `fifa_code` sono salvati separatamente per migliorare il matching.
@@ -172,6 +213,7 @@ Contiene il mapping autorevole tra i country code ELO e i metadati calcistici in
 - `database/` rimane l'unica source of truth per dashboard e chatbot.
 - Logging e timestamp sono stati aggiunti per tracciare meglio i dati e facilitare il debug.
 - Il layer ELO è stato completato come milestone autonoma prima di passare al predittivo.
+- Il Poisson model usa una stima iniziale dei lambda basata sulle feature ELO in attesa di storico xG più ricco.
 
 ## Problemi già risolti
 - Corretto un mismatch negli import del layer service.
@@ -180,33 +222,19 @@ Contiene il mapping autorevole tra i country code ELO e i metadati calcistici in
 - Allineato il service allo schema reale del model `Team`.
 - Rimossi assunti su campi che non esistono nello schema attuale.
 - Confermato che il flusso ELO funziona end-to-end con il database attuale.
+- Confermato che feature engineering e Poisson model funzionano con test verdi.
 
 ## Stato attuale
 - Il database è stabile e versionato con Alembic.
 - Il layer di scraping ELO funziona.
 - Il layer di sync ELO verso il database funziona.
-- I test del layer ELO sono verdi.
-- La struttura del progetto è coerente ed è pronta per il layer predittivo successivo.
+- Il feature engineering funziona.
+- Il modello Poisson funziona.
+- I test principali sono verdi.
+- La struttura del progetto è coerente ed è pronta per il layer successivo: edge, EV e Kelly.
 
 ## Prossimi passi
-1. Fare un audit dei record squadra già caricati nel database.
-2. Passare al feature engineering.
-3. Costruire il primo modello Poisson.
-4. Aggiungere i calcoli di edge, EV e Kelly.
-5. Avviare il recommendation engine e i profili di confidenza.
-6. Costruire la dashboard Streamlit.
-
-## Nota per una nuova chat
-Se si apre una nuova conversazione, l'IA dovrebbe leggere prima questo file e assumere che:
-- il database esiste già,
-- Alembic è già configurato,
-- la pipeline ELO è già funzionante,
-- i test del layer ELO sono già passati,
-- il prossimo passo naturale è il layer predittivo.
-
-## Change log
-- Completato lo scaffolding iniziale del progetto.
-- Creato e migrato lo schema database.
-- Costruito e validato lo scraper ELO.
-- Costruito e validato il service di sync ELO.
-- Aggiunti i test automatici e verificati come passanti.
+1. Aggiungere i calcoli di edge, EV e Kelly.
+2. Avviare il recommendation engine e i profili di confidenza.
+3. Costruire la dashboard Streamlit.
+4. Integrare il chatbot locale con Ollama.
