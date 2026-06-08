@@ -39,15 +39,30 @@ class Team(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     sport_id: Mapped[int] = mapped_column(ForeignKey("sports.id"), nullable=False)
+
     name: Mapped[str] = mapped_column(String(150), nullable=False)
+    canonical_name: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
     short_name: Mapped[str | None] = mapped_column(String(50))
+
     country: Mapped[str] = mapped_column(String(100), nullable=False)
     country_code: Mapped[str | None] = mapped_column(String(3), unique=True, index=True)
+    iso_code_2: Mapped[str | None] = mapped_column(String(2), index=True)
+    fifa_code: Mapped[str | None] = mapped_column(String(3), unique=True, index=True)
+
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     confederation: Mapped[str | None] = mapped_column(String(50))
+
     fifa_ranking: Mapped[int | None] = mapped_column(Integer)
     elo_rating: Mapped[float | None] = mapped_column(Float)
+
+    is_fifa_member: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    source_name: Mapped[str | None] = mapped_column(String(100))
+    source_team_name: Mapped[str | None] = mapped_column(String(150))
     founded_year: Mapped[int | None] = mapped_column(Integer)
+
+    last_synced_at: Mapped[str | None] = mapped_column(String(30))
     updated_at: Mapped[str | None] = mapped_column(
         String(30),
         server_default=func.datetime("now")

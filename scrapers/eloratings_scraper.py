@@ -8,13 +8,12 @@ from typing import List, Optional
 
 from scrapers.base_scraper import BaseScraper
 
-
 LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
 class EloTeamRecord:
-    """Structured representation of one national team's ELO row."""
+    """Structured representation of one ELO row from World.tsv."""
 
     rank: int
     country_code: str
@@ -60,7 +59,7 @@ class EloRatingsScraper(BaseScraper):
         return [asdict(record) for record in records]
 
     def _parse_row(self, row: List[str]) -> Optional[EloTeamRecord]:
-        """Parse a single TSV row into a structured record."""
+        """Parse a single TSV row into a structured ELO record."""
         if len(row) < 4:
             return None
 
@@ -68,10 +67,16 @@ class EloRatingsScraper(BaseScraper):
         country_code = row[2].strip().upper()
         elo_value = self._safe_parse_int(row[3])
 
-        if rank_value is None or not country_code or elo_value is None:
+        if rank_value is None or elo_value is None or not country_code:
             return None
 
         if len(country_code) != 2:
+            return None
+
+        if rank_value <= 0:
+            return None
+
+        if elo_value <= 0:
             return None
 
         return EloTeamRecord(

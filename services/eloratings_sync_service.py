@@ -1,26 +1,28 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Literal, Optional
 
-from sqlalchemy import Select, select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from database.base import SessionLocal
-from database.models import ScrapingLog, Sport, Team
+from database.models import Sport, Team
 from scrapers.eloratings_scraper import EloRatingsScraper, EloTeamRecord
-from services.mappers.country_code_mapper import get_country_name_from_elo_code
-
+from services.mappers.country_code_mapper import (
+    CountryMetadata,
+    get_country_metadata_from_elo_code,
+)
 
 LOGGER = logging.getLogger(__name__)
+
+SyncAction = Literal["created", "updated", "unchanged"]
 
 
 @dataclass(slots=True)
 class EloSyncResult:
-    """Summary of one synchronization run."""
+    """Summary of one ELO synchronization execution."""
 
     total_records: int = 0
     created_teams: int = 0
@@ -31,209 +33,258 @@ class EloSyncResult:
 
 
 class EloRatingsSyncService:
-    """Synchronize ELO ratings into the teams table with add-or-update behavior."""
+    """Synchronize ELO ratings from eloratings.net into the teams table."""
 
-    SOURCE_NAME = "eloratings.net"
+    NATIONAL_TEAM_TYPE = "national_team"
+    FOOTBALL_SPORT_NAME = "football"
+    FOOTBALL_SPORT_TYPE = "team_sport"
 
-    def __init__(self, db_session: Optional[Session] = None) -> None:
-        self.db_session = db_session or SessionLocal()
-        self.scraper = EloRatingsScraper()
+    def __init__(
+        self,
+        db_session: Session,
+        scraper: Optional[EloRatingsScraper] = None,
+    ) -> None:
+        self.db_session = db_session
+        self.scraper = scraper or EloRatingsScraper()
 
-    def sync_team_ratings(self, dry_run: bool = True) -> EloSyncResult:
-      """
-      Synchronize ELO team ratings into the database.
+    def sync_team_ratings(self) -> EloSyncResult:
+        """Fetch ELO ratings and upsert them into the teams table."""
+        result = EloSyncResult()
+        records = self.scraper.scrape_team_ratings()
+        result.total_records = len(records)
 
-      Args:
-          dry_run: If True, no persistent DB changes are committed.
+        LOGGER.info("Starting ELO synchronization for %s records.", result.total_records)
 
-      Returns:
-          EloSyncResult: summary of sync execution.
-      """
-      result = EloSyncResult()
-      status = "SUCCESS"
-      error_message: str | None = None
-      started_at = time.perf_counter()
+        football_sport = self._get_or_create_football_sport()
 
-      try:
-          football_sport = self._get_football_sport()
-          records = self.scraper.scrape_team_ratings()
-          result.total_records = len(records)
+        for record in records:
+            try:
+                metadata = get_country_metadata_from_elo_code(record.country_code)
+                if metadata is None:
+                    LOGGER.warning(
+                        "Skipping country_code=%s because it is not mapped.",
+                        record.country_code,
+                    )
+                    result.skipped_records += 1
+                    continue
 
-          for record in records:
-              try:
-                  was_processed = self._create_or_update_team(
-                      record=record,
-                      football_sport_id=football_sport.id,
-                      result=result,
-                  )
-                  if not was_processed:
-                      result.skipped_records += 1
-              except Exception as record_error:  # noqa: BLE001
-                  result.failed_records += 1
-                  LOGGER.exception(
-                      "Failed to process country_code=%s: %s",
-                      record.country_code,
-                      record_error,
-                  )
+                action = self._create_or_update_team(
+                    record=record,
+                    metadata=metadata,
+                    football_sport_id=football_sport.id,
+                )
 
-          if dry_run:
-              self.db_session.rollback()
-              LOGGER.info("Dry-run completed. Transaction rolled back.")
-          else:
-              self.db_session.commit()
-              LOGGER.info("Synchronization committed successfully.")
+                if action == "created":
+                    result.created_teams += 1
+                elif action == "updated":
+                    result.updated_teams += 1
+                else:
+                    result.unchanged_teams += 1
 
-      except Exception as sync_error:  # noqa: BLE001
-          self.db_session.rollback()
-          status = "FAILED"
-          error_message = str(sync_error)
-          LOGGER.exception("ELO synchronization failed: %s", sync_error)
-          raise
-      finally:
-          duration_seconds = round(time.perf_counter() - started_at, 3)
-          self._write_scraping_log(
-              result=result,
-              dry_run=dry_run,
-              status=status,
-              error_message=error_message,
-              duration_seconds=duration_seconds,
-          )
-          self.db_session.close()
+            except Exception as exc:
+                result.failed_records += 1
+                LOGGER.exception(
+                    "Failed to process country_code=%s: %s",
+                    record.country_code,
+                    exc,
+                )
 
-      return result
+        self.db_session.commit()
+        LOGGER.info("Synchronization committed successfully.")
+        LOGGER.info("ELO sync result: %s", result)
+        return result
 
     def _create_or_update_team(
         self,
         record: EloTeamRecord,
+        metadata: CountryMetadata,
         football_sport_id: int,
-        result: EloSyncResult,
-    ) -> bool:
-        """
-        Create a new team or update an existing one based on country_code.
-        """
-        country_name = get_country_name_from_elo_code(record.country_code)
-        if country_name is None:
-            LOGGER.warning(
-                "Skipping unknown country_code=%s because no mapper entry exists.",
-                record.country_code,
-            )
-            return False
+    ) -> SyncAction:
+        """Create or update one team using canonical metadata and ELO rating."""
+        existing_team = self._get_existing_team(metadata)
+        timestamp_now = self._utc_now_string()
 
-        team = self._find_team_by_country_code(record.country_code)
+        canonical_name = metadata.canonical_name
+        source_name = canonical_name
+        country_name = canonical_name
 
-        if team is None:
-            team = Team(
+        if existing_team is None:
+            new_team = Team(
                 sport_id=football_sport_id,
-                name=country_name,
-                short_name=record.country_code,
+                name=canonical_name,
+                canonical_name=canonical_name,
+                short_name=metadata.fifa_code,
                 country=country_name,
                 country_code=record.country_code,
-                type="national_team",
-                confederation=None,
+                iso_code_2=metadata.iso_code_2,
+                fifa_code=metadata.fifa_code,
+                type=self.NATIONAL_TEAM_TYPE,
+                confederation=metadata.confederation,
                 fifa_ranking=None,
                 elo_rating=float(record.elo_rating),
+                is_fifa_member=metadata.is_fifa_member,
+                is_active=True,
+                source_name="eloratings",
+                source_team_name=source_name,
                 founded_year=None,
+                last_synced_at=timestamp_now,
             )
-            self.db_session.add(team)
-            result.created_teams += 1
-
+            self.db_session.add(new_team)
             LOGGER.info(
-                "Created new team name=%s country_code=%s elo_rating=%s",
-                team.name,
-                team.country_code,
-                team.elo_rating,
+                "Created team %s (%s) with ELO=%s.",
+                canonical_name,
+                record.country_code,
+                record.elo_rating,
             )
-            return True
+            return "created"
 
-        was_changed = False
+        has_changes = False
 
-        if team.name != country_name:
-            team.name = country_name
-            was_changed = True
+        if existing_team.sport_id != football_sport_id:
+            existing_team.sport_id = football_sport_id
+            has_changes = True
 
-        if team.country != country_name:
-            team.country = country_name
-            was_changed = True
+        if existing_team.name != canonical_name:
+            existing_team.name = canonical_name
+            has_changes = True
 
-        if team.short_name != record.country_code:
-            team.short_name = record.country_code
-            was_changed = True
+        if existing_team.canonical_name != canonical_name:
+            existing_team.canonical_name = canonical_name
+            has_changes = True
 
-        if team.elo_rating != float(record.elo_rating):
-            team.elo_rating = float(record.elo_rating)
-            was_changed = True
+        if existing_team.short_name != metadata.fifa_code:
+            existing_team.short_name = metadata.fifa_code
+            has_changes = True
 
-        if team.type != "national_team":
-            team.type = "national_team"
-            was_changed = True
+        if existing_team.country != country_name:
+            existing_team.country = country_name
+            has_changes = True
 
-        if was_changed:
-            result.updated_teams += 1
+        if existing_team.country_code != record.country_code:
+            existing_team.country_code = record.country_code
+            has_changes = True
+
+        if existing_team.iso_code_2 != metadata.iso_code_2:
+            existing_team.iso_code_2 = metadata.iso_code_2
+            has_changes = True
+
+        if existing_team.fifa_code != metadata.fifa_code:
+            existing_team.fifa_code = metadata.fifa_code
+            has_changes = True
+
+        if existing_team.type != self.NATIONAL_TEAM_TYPE:
+            existing_team.type = self.NATIONAL_TEAM_TYPE
+            has_changes = True
+
+        if existing_team.confederation != metadata.confederation:
+            existing_team.confederation = metadata.confederation
+            has_changes = True
+
+        if existing_team.elo_rating != float(record.elo_rating):
+            existing_team.elo_rating = float(record.elo_rating)
+            has_changes = True
+
+        if existing_team.is_fifa_member != metadata.is_fifa_member:
+            existing_team.is_fifa_member = metadata.is_fifa_member
+            has_changes = True
+
+        if existing_team.is_active is not True:
+            existing_team.is_active = True
+            has_changes = True
+
+        if existing_team.source_name != "eloratings":
+            existing_team.source_name = "eloratings"
+            has_changes = True
+
+        if existing_team.source_team_name != source_name:
+            existing_team.source_team_name = source_name
+            has_changes = True
+
+        existing_team.last_synced_at = timestamp_now
+
+        if has_changes:
             LOGGER.info(
-                "Updated existing team name=%s country_code=%s elo_rating=%s",
-                team.name,
-                team.country_code,
-                team.elo_rating,
+                "Updated team %s (%s) with ELO=%s.",
+                canonical_name,
+                record.country_code,
+                record.elo_rating,
             )
-        else:
-            result.unchanged_teams += 1
-            LOGGER.info(
-                "No changes needed for team name=%s country_code=%s",
-                team.name,
-                team.country_code,
-            )
+            return "updated"
 
-        return True
-
-    def _find_team_by_country_code(self, country_code: str) -> Team | None:
-        """Find a team by country_code."""
-        statement: Select[tuple[Team]] = select(Team).where(
-            Team.country_code == country_code
+        LOGGER.debug(
+            "No changes detected for team %s (%s).",
+            canonical_name,
+            record.country_code,
         )
-        return self.db_session.execute(statement).scalar_one_or_none()
+        return "unchanged"
 
-    def _get_football_sport(self) -> Sport:
-        """Return the Football sport row from the database."""
-        statement: Select[tuple[Sport]] = select(Sport).where(Sport.name == "Football")
-        sport = self.db_session.execute(statement).scalar_one_or_none()
-
-        if sport is None:
-            raise ValueError(
-                "Sport 'Football' not found. Run database seed before synchronization."
+    def _get_existing_team(self, metadata: CountryMetadata) -> Optional[Team]:
+        """Find a team by the most stable identifiers available."""
+        if metadata.fifa_code is not None:
+            team = (
+                self.db_session.query(Team)
+                .filter(Team.fifa_code == metadata.fifa_code)
+                .one_or_none()
             )
+            if team is not None:
+                return team
 
+        if metadata.iso_code_2 is not None:
+            team = (
+                self.db_session.query(Team)
+                .filter(Team.iso_code_2 == metadata.iso_code_2)
+                .one_or_none()
+            )
+            if team is not None:
+                return team
+
+        return (
+            self.db_session.query(Team)
+            .filter(Team.canonical_name == metadata.canonical_name)
+            .one_or_none()
+        )
+
+    def _get_or_create_football_sport(self) -> Sport:
+        """Ensure the football sport row exists before syncing teams."""
+        sport = (
+            self.db_session.query(Sport)
+            .filter(Sport.name == self.FOOTBALL_SPORT_NAME)
+            .one_or_none()
+        )
+
+        if sport is not None:
+            return sport
+
+        sport = Sport(
+            name=self.FOOTBALL_SPORT_NAME,
+            type=self.FOOTBALL_SPORT_TYPE,
+        )
+        self.db_session.add(sport)
+        self.db_session.flush()
+
+        LOGGER.info("Created missing sport row: %s.", self.FOOTBALL_SPORT_NAME)
         return sport
 
-    def _write_scraping_log(
-      self,
-      result: EloSyncResult,
-      dry_run: bool,
-      status: str,
-      error_message: str | None,
-      duration_seconds: float,
-  ) -> None:
-      """Write one scraping log entry aligned with the ScrapingLog ORM model."""
-      try:
-          resolved_status = f"{status}_DRY_RUN" if dry_run and status == "SUCCESS" else status
+    @staticmethod
+    def _utc_now_string() -> str:
+        """Return a UTC timestamp string compatible with the current schema."""
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-          log_entry = ScrapingLog(
-              source_name=self.SOURCE_NAME,
-              url="https://eloratings.net/World.tsv",
-              status=resolved_status,
-              rows_fetched=result.total_records,
-              error_message=error_message,
-              duration_seconds=duration_seconds,
-          )
-          self.db_session.add(log_entry)
-          self.db_session.commit()
 
-      except SQLAlchemyError as log_error:
-          self.db_session.rollback()
-          LOGGER.exception("Failed to persist scraping log: %s", log_error)
+def run_elo_ratings_sync() -> EloSyncResult:
+    """Run the ELO synchronization using a managed database session."""
+    session = SessionLocal()
+    try:
+        service = EloRatingsSyncService(db_session=session)
+        return service.sync_team_ratings()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-
-    service = EloRatingsSyncService()
-    result = service.sync_team_ratings(dry_run=False)
-    print(result)
+    sync_result = run_elo_ratings_sync()
+    print(sync_result)
