@@ -42,12 +42,16 @@ class Team(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     short_name: Mapped[str | None] = mapped_column(String(50))
     country: Mapped[str] = mapped_column(String(100), nullable=False)
+    country_code: Mapped[str | None] = mapped_column(String(3), unique=True, index=True)
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     confederation: Mapped[str | None] = mapped_column(String(50))
     fifa_ranking: Mapped[int | None] = mapped_column(Integer)
     elo_rating: Mapped[float | None] = mapped_column(Float)
     founded_year: Mapped[int | None] = mapped_column(Integer)
-    updated_at: Mapped[str | None] = mapped_column(String(30), server_default=func.datetime("now"))
+    updated_at: Mapped[str | None] = mapped_column(
+        String(30),
+        server_default=func.datetime("now")
+    )
 
     sport = relationship("Sport", back_populates="teams")
 
