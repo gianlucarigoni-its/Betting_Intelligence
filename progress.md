@@ -250,26 +250,41 @@ Calcola i lambda attesi, la distribuzione dei punteggi e le probabilità 1X2. È
   - condizione di favorito
 - Il recommendation engine trasforma i numeri del layer value in una scelta operativa leggibile.
 
-### Test automatici aggiunti
-- Creato `tests/test_value_metrics.py`.
-- Creato `tests/test_recommendation_engine.py`.
-- Verificati con successo i casi principali del value layer:
-  - edge positivo
-  - edge negativo
-  - Kelly clamped a zero
-  - validazione probabilità non valide
-  - validazione quote non valide
-- Verificati con successo i casi principali del recommendation engine:
-  - profilo `HIGH_RISK`
-  - profilo `VALUE`
-  - profilo `SAFE`
-  - profilo `NO_BET`
+
+### Prediction persistence layer
+- Creato `services/prediction_persistence_service.py`.
+- Implementata la persistenza delle prediction nel database come fonte di verità unica.
+- Allineato il service allo schema reale della tabella `predictions`.
+- Gestiti i campi operativi della prediction:
+  - `model_version`
+  - `model_type`
+  - `market_level`
+  - `market_type`
+  - `market_category`
+  - `selection`
+  - `estimated_prob`
+  - `estimated_odd`
+  - `bookmaker_prob`
+  - `bookmaker_odd`
+  - `bookmaker_id`
+  - `edge_pct`
+  - `expected_value`
+  - `kelly_fraction_raw`
+  - `kelly_fraction`
+  - `kelly_fraction_capped`
+  - `profile_tag`
+  - `recommendation_score`
+  - `confidence_level`
+  - `reasoning`
+  - `is_correct`
+  - `actual_result`
+- Aggiunto l’helper `from_value_metrics()` per costruire il payload di persistenza a partire dall’output del value layer e del recommendation engine.
+- La persistence layer collega il motore predittivo alla base dati, rendendo le prediction interrogabili da dashboard e chatbot.
 
 ### Stato aggiornato
-- Il layer `Edge / EV / Kelly` è stato completato.
-- Il layer `Recommendation engine` è stato completato.
-- La pipeline ora passa dal modello statistico alla classificazione operativa della giocata.
-- Il progetto è pronto per il prossimo blocco: dashboard Streamlit e/o rifinitura della persistenza delle prediction nel database.
+- La persistenza delle prediction è stata introdotta.
+- Il progetto ora salva su database l’output operativo del modello.
+- La pipeline è più vicina a un flusso end-to-end completo.
 
 ## Stato attuale
 - Il database è stabile e versionato con Alembic.
@@ -279,8 +294,9 @@ Calcola i lambda attesi, la distribuzione dei punteggi e le probabilità 1X2. È
 - Il modello Poisson funziona.
 - Il layer Edge / EV / Kelly funziona.
 - Il recommendation engine funziona.
+- La persistenza delle prediction funziona.
 - I test principali sono verdi.
-- La struttura del progetto è coerente ed è pronta per il layer successivo: dashboard, persistenza delle prediction e chatbot.
+- La struttura del progetto è coerente ed è pronta per il layer successivo: dashboard, chatbot e orchestrazione end-to-end.
 
 ## Prossimi passi
 1. Integrare la persistenza delle prediction e dei profili nel database.
