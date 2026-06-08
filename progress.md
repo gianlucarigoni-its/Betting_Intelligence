@@ -224,17 +224,66 @@ Calcola i lambda attesi, la distribuzione dei punteggi e le probabilità 1X2. È
 - Confermato che il flusso ELO funziona end-to-end con il database attuale.
 - Confermato che feature engineering e Poisson model funzionano con test verdi.
 
+### Value metrics
+- Creato `models/value_metrics.py`.
+- Implementato il calcolo di:
+  - `edge_pct`
+  - `ev`
+  - `kelly_fraction`
+  - `quarter_kelly_fraction`
+- Aggiunta la validazione degli input per probabilità e quote.
+- Introdotta una struttura tipizzata per separare input e output dei calcoli di valore.
+- Il layer value metrics è il ponte tra il modello predittivo e la decisione scommessa.
+
+### Recommendation engine
+- Creato `recommendation/profile_engine.py`.
+- Implementata la classificazione delle giocate nei profili:
+  - `SAFE`
+  - `VALUE`
+  - `RISKY`
+  - `HIGH_RISK`
+  - `LOW_RISK`
+  - `NO_BET`
+- Aggiunta la logica basata su:
+  - edge percentuale
+  - livello di confidenza
+  - condizione di favorito
+- Il recommendation engine trasforma i numeri del layer value in una scelta operativa leggibile.
+
+### Test automatici aggiunti
+- Creato `tests/test_value_metrics.py`.
+- Creato `tests/test_recommendation_engine.py`.
+- Verificati con successo i casi principali del value layer:
+  - edge positivo
+  - edge negativo
+  - Kelly clamped a zero
+  - validazione probabilità non valide
+  - validazione quote non valide
+- Verificati con successo i casi principali del recommendation engine:
+  - profilo `HIGH_RISK`
+  - profilo `VALUE`
+  - profilo `SAFE`
+  - profilo `NO_BET`
+
+### Stato aggiornato
+- Il layer `Edge / EV / Kelly` è stato completato.
+- Il layer `Recommendation engine` è stato completato.
+- La pipeline ora passa dal modello statistico alla classificazione operativa della giocata.
+- Il progetto è pronto per il prossimo blocco: dashboard Streamlit e/o rifinitura della persistenza delle prediction nel database.
+
 ## Stato attuale
 - Il database è stabile e versionato con Alembic.
 - Il layer di scraping ELO funziona.
 - Il layer di sync ELO verso il database funziona.
 - Il feature engineering funziona.
 - Il modello Poisson funziona.
+- Il layer Edge / EV / Kelly funziona.
+- Il recommendation engine funziona.
 - I test principali sono verdi.
-- La struttura del progetto è coerente ed è pronta per il layer successivo: edge, EV e Kelly.
+- La struttura del progetto è coerente ed è pronta per il layer successivo: dashboard, persistenza delle prediction e chatbot.
 
 ## Prossimi passi
-1. Aggiungere i calcoli di edge, EV e Kelly.
-2. Avviare il recommendation engine e i profili di confidenza.
-3. Costruire la dashboard Streamlit.
-4. Integrare il chatbot locale con Ollama.
+1. Integrare la persistenza delle prediction e dei profili nel database.
+2. Costruire la dashboard Streamlit.
+3. Integrare il chatbot locale con Ollama.
+4. Rifinire il flusso end-to-end “Aggiorna Ora”.
