@@ -11,6 +11,9 @@ Costruire un tool locale, gratuito e scritto in Python per l'analisi statistica 
 - Alembic
 - Streamlit
 - Plotly
+- pytest
+- requests
+- BeautifulSoup4
 
 ## Cose già fatte
 - Creata la cartella progetto in `~/Personal/Betting_Intelligence`.
@@ -43,29 +46,98 @@ Costruire un tool locale, gratuito e scritto in Python per l'analisi statistica 
 - Corretto `database/migrations/env.py` aggiungendo la root del progetto a `sys.path`.
 - Creata e applicata con successo la migration iniziale.
 
-## Seed e test
+## Seed e test database
 - Creato `database/seed.py` per popolare il DB.
 - Creato `database/db_read_test.py` per verificare la lettura dei dati.
+- Eseguito con successo il seed del database.
+- Eseguito con successo il test di lettura del database.
 - Seed previsto:
   - sport `Football`
   - competizione `FIFA World Cup 2026`
 
-## Problemi già risolti
-- Errore Alembic per `sqlalchemy.url` duplicato in `alembic.ini`.
-- Errore `ModuleNotFoundError: No module named 'database'` in Alembic.
-- Errore di import anche nello script `database/seed.py`.
-- Problemi con l'estensione SQLite di VS Code in WSL non bloccanti per il progetto.
+## Layer scraping ELO completato
+- Creato `scrapers/base_scraper.py` come base riutilizzabile per richieste HTTP con:
+  - sessione persistente
+  - header realistici
+  - retry automatici
+  - delay randomico tra richieste
+- Creato `scrapers/eloratings_scraper.py` per leggere `https://eloratings.net/World.tsv`.
+- Implementato il parser TSV con output strutturato in `EloTeamRecord`.
+- Corretto un filtro troppo aggressivo sull'ELO che faceva scendere i record da 244 a 185.
+- Validato il parser sul feed reale: il totale corretto è tornato a `244` record.
+
+## Layer service ELO completato
+- Creato `services/eloratings_sync_service.py`.
+- Integrato il mapper reale `services/mappers/country_code_mapper.py`.
+- Allineato il service allo schema ORM reale della tabella `teams`.
+- Gestita la creazione automatica dello sport `football` se assente.
+- Implementata la logica di sync con conteggi di:
+  - `created`
+  - `updated`
+  - `unchanged`
+  - `skipped`
+  - `failed`
+- Distinti correttamente i campi:
+  - `country_code` come codice sorgente ELO
+  - `iso_code_2` come normalizzazione ISO
+  - `fifa_code` come identificatore calcistico stabile
+- Confermato che il layer ELO attuale è chiuso per la struttura corrente del progetto.
+
+## Test automatici completati
+- Creato `pytest.ini` per rendere stabile il `pythonpath` durante i test.
+- Creato `tests/test_eloratings_scraper.py`.
+- Creato `tests/test_eloratings_sync_service.py`.
+- Verificati con successo i casi principali del parser:
+  - riga valida
+  - riga corta
+  - country code invalido
+  - rank non valido
+  - ELO non valido
+  - parsing multiplo TSV
+  - errore su TSV senza record validi
+- Verificati con successo i casi principali del sync service:
+  - creazione nuova squadra
+  - aggiornamento squadra esistente
+  - nessuna modifica
+  - skip su metadata mancanti
+  - fallback via `fifa_code`
+- Stato test attuale:
+  - `tests/test_eloratings_scraper.py` → `7 passed`
+  - `tests/test_eloratings_sync_service.py` → `5 passed`
+
+## Problemi risolti oggi
+- Import errato verso `services.team_name_mapper`.
+- Mismatch tra nomi del mapper ipotizzati e quelli realmente presenti nel progetto.
+- `ModuleNotFoundError: No module named 'scrapers'` durante l'esecuzione di pytest.
+- Parser ELO troppo restrittivo che scartava righe valide del feed.
+- Mismatch tra `services/eloratings_sync_service.py` e il model ORM `Team`.
+- Uso errato del campo `is_national_team`, non presente nello schema reale.
 
 ## Stato attuale
-- La base del progetto è pronta.
-- Il database è versionato con Alembic.
-- La prossima fase è verificare seed e test DB, poi iniziare lo scraper base o il modello Poisson.
+- Il database è stabile e versionato con Alembic.
+- Il layer di scraping ELO è funzionante.
+- Il layer di sincronizzazione ELO verso il database è funzionante.
+- I test automatici del layer ELO sono verdi.
+- Per la struttura attuale del progetto, questo layer può considerarsi chiuso e non va riaperto salvo:
+  - modifiche allo schema del database
+  - cambi al feed TSV di ELO Ratings
+  - nuove regole di mapping o normalizzazione
+  - cambi architetturali del progetto
+
+## File principali aggiunti o aggiornati oggi
+- `scrapers/base_scraper.py`
+- `scrapers/eloratings_scraper.py`
+- `services/eloratings_sync_service.py`
+- `tests/test_eloratings_scraper.py`
+- `tests/test_eloratings_sync_service.py`
+- `pytest.ini`
 
 ## Prossimo step consigliato
-1. Eseguire con successo il seed del database. - GIA FATTO!
-2. Eseguire con successo il test di lettura del database. - GIA FATTO!
-3. Creare la base dello scraper.
-4. Iniziare il modulo `poisson_model.py`.
+1. Eseguire un audit finale dei dati caricati nel DB per le nazionali ELO.
+2. Passare al layer successivo:
+   - feature engineering
+   - modello Poisson
+   - calcolo edge / EV / Kelly
 
 ## Nota per una nuova chat
-Se apri una nuova conversazione, puoi ripartire da qui: il database è già impostato, Alembic funziona e siamo pronti per la parte di scraping o modellazione predittiva.
+Se apri una nuova conversazione, puoi ripartire da qui: database e layer ELO sono operativi, testati e allineati allo schema reale. Il prossimo passo naturale è il layer predittivo.
