@@ -574,6 +574,90 @@ fuori dal corridoio selettivo stretto.
 
 ---
 
+## 9D. Storico esteso a 10 stagioni
+
+Catalogo storico ampliato da 5 a 10 stagioni:
+
+```text
+2023/24, 2022/23, 2021/22, 2020/21, 2019/20,
+2018/19, 2017/18, 2016/17, 2015/16, 2014/15
+```
+
+Import extra completato:
+
+```text
+25/25 import riusciti
+9.130 match aggiunti
+27.387 quote aggiunte
+```
+
+Nuovo comando import dedicato:
+
+```bash
+python -m historical.run_batch_import --seasons 1819,1718,1617,1516,1415
+```
+
+---
+
+## 9E. Walk-forward tuning per lega
+
+Nuova procedura:
+
+```bash
+python -m backtesting.run_walkforward_tuning \
+  --seasons 1415,1516,1617,1718,1819,1920,2021,2122,2223,2324 \
+  --policy-file config/league_backtest_policy.json
+```
+
+Cosa fa:
+
+```text
+1. Usa le prediction gia' salvate nel DB.
+2. Tuning per lega su fold temporali walk-forward.
+3. Salva una policy per lega in config/league_backtest_policy.json.
+4. Disabilita le leghe che non superano il cancello di stabilita'.
+5. Valida sull'ultima stagione come holdout finale.
+```
+
+Policy finale:
+
+```text
+Premier League  active  edge 5.0-6.0  odds <= 1.8
+La Liga         active  edge 5.0-6.0  odds <= 1.8
+Bundesliga      active  edge 5.0-6.5  odds <= 1.8
+Serie A         active  edge 5.0-6.0  odds <= 2.0
+Ligue 1         no-bet  segnale non abbastanza stabile
+AWAY            disabilitato
+```
+
+Holdout finale 2023/24 con policy per lega:
+
+```text
+Run IDs      : 205-209
+Bet reali    : 6
+Stake        : 60.0
+P&L          : +12.3
+ROI          : +20.5%
+Brier        : 0.2011
+ECE          : 0.0088
+```
+
+Diagnosi:
+
+```text
+Il progetto e' piu' competitivo:
+- ROI out-of-sample positivo su holdout 2023/24.
+- Leghe deboli vengono escluse invece di forzare volume.
+- Il tuning non ricalcola Poisson per ogni candidato: usa prediction-cache.
+
+Resta da migliorare:
+- Volume ancora basso.
+- HOME resta la sola selezione attiva.
+- Serve un secondo modello o feature aggiuntive per aumentare volume senza rumore.
+```
+
+---
+
 ## 10. Esperimento 1 — Recent form weighting
 
 ### Obiettivo
@@ -805,13 +889,13 @@ Non impostare 0.99 come default.
 Ultimo test completo:
 
 ```bash
-pytest
+wsl -d Ubuntu --cd /home/rigoni_g/Personal/Betting_Intelligence -- .venv/bin/python -m pytest -q
 ```
 
 Risultato:
 
 ```text
-52 passed
+54 passed
 ```
 
 Nota test aggiornata:
@@ -827,7 +911,7 @@ run.total_bets deve contare solo is_bet=True.
 
 ## 13. Stato codice attuale consigliato
 
-Default consigliati:
+Default consigliati per il modello probabilistico:
 
 ```python
 recent_form_half_life_matches: float = 0.0
@@ -835,12 +919,22 @@ home_lambda_multiplier: float = 1.0
 away_lambda_multiplier: float = 1.0
 ```
 
-Quindi il comportamento standard resta vicino alla baseline.
+Default consigliato per la selezione betting:
+
+```text
+Usare policy per lega da config/league_backtest_policy.json.
+Non tornare alla sola soglia globale se si sta valutando competitivita'.
+```
 
 Feature sperimentali disponibili da CLI:
 
 ```bash
-python -m backtesting.run_calibration   --seasons 2324,2223,2122,2021,1920   --recent-form-half-life-matches 0.0   --home-lambda-multiplier 1.0   --away-lambda-multiplier 1.0
+python -m backtesting.run_calibration \
+  --seasons 2324,2223,2122,2021,1920 \
+  --policy-file config/league_backtest_policy.json \
+  --recent-form-half-life-matches 0.0 \
+  --home-lambda-multiplier 1.0 \
+  --away-lambda-multiplier 1.0
 ```
 
 ---

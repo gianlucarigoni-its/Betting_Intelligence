@@ -44,31 +44,46 @@ LEAGUE_CATALOG: list[LeagueConfig] = [
         code="E0",
         label="Premier League",
         country="England",
-        seasons=("2324", "2223", "2122", "2021", "1920"),
+        seasons=(
+            "2324", "2223", "2122", "2021", "1920",
+            "1819", "1718", "1617", "1516", "1415",
+        ),
     ),
     LeagueConfig(
         code="SP1",
         label="La Liga",
         country="Spain",
-        seasons=("2324", "2223", "2122", "2021", "1920"),
+        seasons=(
+            "2324", "2223", "2122", "2021", "1920",
+            "1819", "1718", "1617", "1516", "1415",
+        ),
     ),
     LeagueConfig(
         code="D1",
         label="Bundesliga",
         country="Germany",
-        seasons=("2324", "2223", "2122", "2021", "1920"),
+        seasons=(
+            "2324", "2223", "2122", "2021", "1920",
+            "1819", "1718", "1617", "1516", "1415",
+        ),
     ),
     LeagueConfig(
         code="I1",
         label="Serie A",
         country="Italy",
-        seasons=("2324", "2223", "2122", "2021", "1920"),
+        seasons=(
+            "2324", "2223", "2122", "2021", "1920",
+            "1819", "1718", "1617", "1516", "1415",
+        ),
     ),
     LeagueConfig(
         code="F1",
         label="Ligue 1",
         country="France",
-        seasons=("2324", "2223", "2122", "2021", "1920"),
+        seasons=(
+            "2324", "2223", "2122", "2021", "1920",
+            "1819", "1718", "1617", "1516", "1415",
+        ),
     ),
 ]
 

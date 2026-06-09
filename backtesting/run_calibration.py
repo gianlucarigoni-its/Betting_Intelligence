@@ -24,6 +24,7 @@ import sys
 from dataclasses import dataclass
 
 from backtesting.calibration_report import CalibrationReportBuilder
+from backtesting.league_policy import LeagueBettingPolicy, LeaguePolicyStore
 from backtesting.historical_poisson_backtester import (
     HistoricalPoissonBacktestConfig,
     HistoricalPoissonBacktester,
@@ -120,6 +121,7 @@ def _phase_import(leagues: list[LeagueConfig]) -> BatchImportSummary:
 def _phase_backtest(
     leagues: list[LeagueConfig],
     defaults: BacktestDefaults,
+    policy_store: LeaguePolicyStore | None = None,
 ) -> list[int]:
     """
     Fase 2: esegue un backtest per ogni (lega, stagione) trovata nel DB.
@@ -129,6 +131,7 @@ def _phase_backtest(
     """
     LOGGER.info("=== FASE 2: BACKTEST ===")
     run_ids: list[int] = []
+    policy_map = policy_store.load() if policy_store else {}
 
     for league in leagues:
         for season_code in league.seasons:
@@ -157,6 +160,23 @@ def _phase_backtest(
                     league.label, season_label, competition.id,
                 )
 
+                league_policy = policy_map.get(league.label)
+                effective = league_policy or LeagueBettingPolicy(
+                    min_edge_pct=defaults.min_edge_pct,
+                    max_edge_pct=defaults.max_edge_pct,
+                    min_model_probability=defaults.min_model_probability,
+                    max_bookmaker_odds=defaults.max_bookmaker_odds,
+                    away_min_edge_pct=defaults.away_min_edge_pct,
+                    away_min_model_probability=defaults.away_min_model_probability,
+                    away_max_bookmaker_odds=defaults.away_max_bookmaker_odds,
+                    allow_away_bets=defaults.allow_away_bets,
+                    min_prior_matches=defaults.min_prior_matches,
+                    shrinkage_matches=defaults.shrinkage_matches,
+                    recent_form_half_life_matches=defaults.recent_form_half_life_matches,
+                    home_lambda_multiplier=defaults.home_lambda_multiplier,
+                    away_lambda_multiplier=defaults.away_lambda_multiplier,
+                )
+
                 try:
                     backtester = HistoricalPoissonBacktester(session)
                     run = backtester.run(
@@ -170,25 +190,19 @@ def _phase_backtest(
                             test_end_date=test_end,
                             initial_bankroll=defaults.initial_bankroll,
                             flat_stake=defaults.flat_stake,
-                            min_edge_pct=defaults.min_edge_pct,
-                            max_edge_pct=defaults.max_edge_pct,
-                            min_model_probability=defaults.min_model_probability,
-                            max_bookmaker_odds=defaults.max_bookmaker_odds,
-                            away_min_edge_pct=defaults.away_min_edge_pct,
-                            away_min_model_probability=defaults.away_min_model_probability,
-                            away_max_bookmaker_odds=defaults.away_max_bookmaker_odds,
-                            allow_away_bets=defaults.allow_away_bets,
-                            min_prior_matches=defaults.min_prior_matches,
-                            shrinkage_matches=defaults.shrinkage_matches,
-                            recent_form_half_life_matches=(
-                                defaults.recent_form_half_life_matches
-                            ),
-                            home_lambda_multiplier=(
-                                defaults.home_lambda_multiplier
-                            ),
-                            away_lambda_multiplier=(
-                                defaults.away_lambda_multiplier
-                            ),
+                            min_edge_pct=effective.min_edge_pct,
+                            max_edge_pct=effective.max_edge_pct,
+                            min_model_probability=effective.min_model_probability,
+                            max_bookmaker_odds=effective.max_bookmaker_odds,
+                            away_min_edge_pct=effective.away_min_edge_pct,
+                            away_min_model_probability=effective.away_min_model_probability,
+                            away_max_bookmaker_odds=effective.away_max_bookmaker_odds,
+                            allow_away_bets=effective.allow_away_bets,
+                            min_prior_matches=effective.min_prior_matches,
+                            shrinkage_matches=effective.shrinkage_matches,
+                            recent_form_half_life_matches=effective.recent_form_half_life_matches,
+                            home_lambda_multiplier=effective.home_lambda_multiplier,
+                            away_lambda_multiplier=effective.away_lambda_multiplier,
                         )
                     )
                     LOGGER.info(
@@ -254,6 +268,10 @@ def _parse_args() -> argparse.Namespace:
         "--skip-backtest",
         action="store_true",
         help="Salta la fase di backtest (calibra sui run già nel DB).",
+    )
+    parser.add_argument(
+        "--policy-file",
+        help="JSON con policy di betting per lega, generato dal tuning walk-forward.",
     )
 
     # Parametri backtest
@@ -337,6 +355,7 @@ def main() -> None:
         home_lambda_multiplier=args.home_lambda_multiplier,
         away_lambda_multiplier=args.away_lambda_multiplier,
     )
+    policy_store = LeaguePolicyStore(args.policy_file) if args.policy_file else None
 
     # Fase 1 — Import
     if not args.skip_import:
@@ -347,7 +366,7 @@ def main() -> None:
     # Fase 2 — Backtest
     new_run_ids: list[int] = []
     if not args.skip_backtest:
-        new_run_ids = _phase_backtest(leagues, defaults)
+        new_run_ids = _phase_backtest(leagues, defaults, policy_store=policy_store)
     else:
         LOGGER.info("Backtest saltato (--skip-backtest).")
 
