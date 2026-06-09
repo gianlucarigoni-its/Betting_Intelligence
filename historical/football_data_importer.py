@@ -164,9 +164,21 @@ class FootballDataImporter:
         if any(not self._has_value(value) for value in odds_map.values()):
             return 0
 
-        decimal_odds = {selection: float(value) for selection, value in odds_map.items() if value is not None}
-        implied_probs = {selection: 1.0 / odd for selection, odd in decimal_odds.items()}
-        overround_pct = (sum(implied_probs.values()) - 1.0) * 100.0
+        decimal_odds = {
+            selection: float(value)
+            for selection, value in odds_map.items()
+            if value is not None
+        }
+        implied_probs = {
+            selection: 1.0 / odd
+            for selection, odd in decimal_odds.items()
+        }
+        implied_prob_total = sum(implied_probs.values())
+        fair_probs = {
+            selection: implied_prob / implied_prob_total
+            for selection, implied_prob in implied_probs.items()
+        }
+        overround_pct = (implied_prob_total - 1.0) * 100.0
         imported = 0
 
         for selection, odd_value in decimal_odds.items():
@@ -195,6 +207,7 @@ class FootballDataImporter:
                     selection=selection,
                     odd_value=odd_value,
                     implied_prob=implied_probs[selection],
+                    fair_prob=fair_probs[selection],
                     overround_pct=overround_pct,
                     snapshot_time=snapshot_time,
                     is_opening=False,

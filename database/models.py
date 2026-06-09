@@ -246,6 +246,7 @@ class HistoricalOddSnapshot(Base):
     selection: Mapped[str] = mapped_column(String(50), nullable=False)
     odd_value: Mapped[float] = mapped_column(Float, nullable=False)
     implied_prob: Mapped[float] = mapped_column(Float, nullable=False)
+    fair_prob: Mapped[float | None] = mapped_column(Float)
     overround_pct: Mapped[float | None] = mapped_column(Float)
     snapshot_time: Mapped[str] = mapped_column(String(30), nullable=False)
     is_opening: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -322,6 +323,7 @@ class BacktestBet(Base):
     placed_at: Mapped[str | None] = mapped_column(String(30))
     settled_at: Mapped[str | None] = mapped_column(String(30))
     reason: Mapped[str | None] = mapped_column(Text)
+    is_bet: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     backtest_run = relationship("BacktestRun", back_populates="bets")
     match = relationship("Match")

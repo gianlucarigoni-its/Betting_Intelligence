@@ -101,43 +101,60 @@ class HistoricalPoissonBacktester:
                 min_model_probability=config.min_model_probability,
                 max_bookmaker_odds=config.max_bookmaker_odds,
             )
-            if candidate is None:
-                continue
-
-            selection, odds_snapshot, edge_pct, expected_value = candidate
+            bet_selection: str | None = candidate[0] if candidate is not None else None
             bankroll_before = run.initial_bankroll + run.profit_loss
-            stake = min(config.flat_stake, bankroll_before)
-            if stake <= 0:
-                break
+            bankroll_exhausted = bankroll_before <= 0
 
-            bet = self._persistence.record_bet(
-                BacktestBetInput(
-                    backtest_run_id=run.id,
-                    match_id=match.id,
-                    bookmaker_id=odds_snapshot.bookmaker_id,
-                    market_level=1,
-                    market_type="1X2",
-                    market_category="match_result",
-                    selection=selection,
-                    model_probability=self._probability_for_selection(probabilities, selection),
-                    bookmaker_probability=odds_snapshot.implied_prob,
-                    bookmaker_odds=odds_snapshot.odd_value,
-                    edge_pct=edge_pct,
-                    expected_value=expected_value,
-                    stake=stake,
-                    bankroll_before=bankroll_before,
-                    placed_at=odds_snapshot.snapshot_time,
-                    reason=(
-                        f"lambda_home={probabilities.lambda_home:.3f}; "
-                        f"lambda_away={probabilities.lambda_away:.3f}"
-                    ),
+            # Salva TUTTE e 3 le selezioni: is_bet=True solo per il candidato
+            # vincente. Le non-bet hanno stake=0 e servono per la calibrazione.
+            for sel, odds_snapshot in odds_by_selection.items():
+                model_prob = self._probability_for_selection(probabilities, sel)
+                value_metrics = self._value_calculator.calculate(
+                    ValueMetricsInput(
+                        model_probability=model_prob,
+                        bookmaker_odds=odds_snapshot.odd_value,
+                    )
                 )
-            )
-            self._persistence.settle_bet(
-                bet.id,
-                self._settlement_result(match, selection),
-            )
+                is_this_bet = (sel == bet_selection) and not bankroll_exhausted
+                stake = min(config.flat_stake, bankroll_before) if is_this_bet else 0.0
+
+                record = self._persistence.record_bet(
+                    BacktestBetInput(
+                        backtest_run_id=run.id,
+                        match_id=match.id,
+                        bookmaker_id=odds_snapshot.bookmaker_id,
+                        market_level=1,
+                        market_type="1X2",
+                        market_category="match_result",
+                        selection=sel,
+                        model_probability=model_prob,
+                        bookmaker_probability=(
+                            odds_snapshot.fair_prob
+                            if odds_snapshot.fair_prob is not None
+                            else odds_snapshot.implied_prob
+                        ),
+                        bookmaker_odds=odds_snapshot.odd_value,
+                        edge_pct=value_metrics.edge_pct,
+                        expected_value=value_metrics.ev,
+                        stake=stake,
+                        is_bet=is_this_bet,
+                        bankroll_before=bankroll_before if is_this_bet else None,
+                        placed_at=odds_snapshot.snapshot_time,
+                        reason=(
+                            f"lambda_home={probabilities.lambda_home:.3f}; "
+                            f"lambda_away={probabilities.lambda_away:.3f}"
+                        ),
+                    )
+                )
+                self._persistence.settle_bet(
+                    record.id,
+                    self._settlement_result(match, sel),
+                )
+
             run = self._session.get(BacktestRun, run.id) or run
+
+            if bankroll_exhausted:
+                break
 
         return self._persistence.complete_run(run.id)
 

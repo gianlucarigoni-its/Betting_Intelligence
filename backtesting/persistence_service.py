@@ -50,7 +50,8 @@ class BacktestBetInput:
     bookmaker_probability: float
     bookmaker_odds: float
     edge_pct: float
-    stake: float
+    stake: float = 0.0
+    is_bet: bool = True
     expected_value: float | None = None
     prediction_id: int | None = None
     bookmaker_id: int | None = None
@@ -96,8 +97,8 @@ class BacktestPersistenceService:
         self._validate_probability(payload.bookmaker_probability, "bookmaker_probability")
         if payload.bookmaker_odds <= 1.0:
             raise ValueError("bookmaker_odds must be greater than 1")
-        if payload.stake <= 0:
-            raise ValueError("stake must be positive")
+        if payload.is_bet and payload.stake <= 0:
+            raise ValueError("stake must be positive for a real bet")
 
         bet = BacktestBet(
             backtest_run_id=payload.backtest_run_id,
@@ -118,6 +119,7 @@ class BacktestPersistenceService:
             bankroll_before=payload.bankroll_before,
             placed_at=payload.placed_at,
             reason=payload.reason,
+            is_bet=payload.is_bet,
         )
         self._session.add(bet)
         self._session.commit()
@@ -169,11 +171,13 @@ class BacktestPersistenceService:
         if run is None:
             raise ValueError(f"Backtest run id={run_id} not found")
 
-        bets = (
+        all_records = (
             self._session.query(BacktestBet)
             .filter(BacktestBet.backtest_run_id == run_id)
             .all()
         )
+        # Metriche finanziarie: solo bet reali (is_bet=True)
+        bets = [r for r in all_records if r.is_bet]
         settled_bets = [bet for bet in bets if bet.result != BacktestBetResult.PENDING.value]
         profit_loss = sum(bet.profit_loss or 0.0 for bet in settled_bets)
         total_staked = sum(bet.stake for bet in bets)

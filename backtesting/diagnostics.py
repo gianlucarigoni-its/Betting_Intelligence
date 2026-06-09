@@ -56,7 +56,10 @@ class BacktestDiagnostics:
 
         bets = (
             self._session.query(BacktestBet)
-            .filter(BacktestBet.backtest_run_id == run_id)
+            .filter(
+                BacktestBet.backtest_run_id == run_id,
+                BacktestBet.is_bet.is_(True),
+            )
             .all()
         )
 
