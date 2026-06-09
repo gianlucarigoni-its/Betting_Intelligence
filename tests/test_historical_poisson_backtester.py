@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -70,3 +72,60 @@ def test_historical_poisson_backtester_records_and_settles_bets() -> None:
     assert all(bet.stake > 0 for bet in real_bets)
     assert all(bet.stake == 0 for bet in all_records if not bet.is_bet)
     assert all(bet.result in {"won", "lost"} for bet in all_records)
+
+
+def test_historical_poisson_backtester_applies_away_specific_filters() -> None:
+    session = build_session()
+    backtester = HistoricalPoissonBacktester(session)
+    selector = backtester._select_best_value_candidate  # type: ignore[attr-defined]
+    fake_probabilities = SimpleNamespace(home=0.615, draw=0.18, away=0.20)
+    odds_by_selection = {
+        "HOME": SimpleNamespace(selection="HOME", odd_value=1.80, bookmaker_id=1),
+        "DRAW": SimpleNamespace(selection="DRAW", odd_value=3.50, bookmaker_id=2),
+        "AWAY": SimpleNamespace(selection="AWAY", odd_value=1.70, bookmaker_id=3),
+    }
+
+    candidate = selector(
+        probabilities=fake_probabilities,
+        odds_by_selection=odds_by_selection,
+        min_edge_pct=5.0,
+        max_edge_pct=6.0,
+        min_model_probability=0.55,
+        max_bookmaker_odds=1.8,
+        away_min_edge_pct=99.0,
+        away_min_model_probability=0.58,
+        away_max_bookmaker_odds=1.8,
+        allow_away_bets=False,
+    )
+
+    assert candidate is not None
+    assert candidate[0] == "HOME"
+
+
+def test_historical_poisson_backtester_disables_away_by_default() -> None:
+    session = build_session()
+    backtester = HistoricalPoissonBacktester(session)
+    selector = backtester._select_best_value_candidate  # type: ignore[attr-defined]
+
+    fake_probabilities = SimpleNamespace(home=0.61, draw=0.15, away=0.27)
+    odds_by_selection = {
+        "HOME": SimpleNamespace(selection="HOME", odd_value=1.80, bookmaker_id=1),
+        "DRAW": SimpleNamespace(selection="DRAW", odd_value=3.80, bookmaker_id=2),
+        "AWAY": SimpleNamespace(selection="AWAY", odd_value=2.50, bookmaker_id=3),
+    }
+
+    candidate = selector(
+        probabilities=fake_probabilities,
+        odds_by_selection=odds_by_selection,
+        min_edge_pct=5.0,
+        max_edge_pct=6.0,
+        min_model_probability=0.55,
+        max_bookmaker_odds=1.8,
+        away_min_edge_pct=99.0,
+        away_min_model_probability=0.58,
+        away_max_bookmaker_odds=1.8,
+        allow_away_bets=False,
+    )
+
+    assert candidate is not None
+    assert candidate[0] == "HOME"

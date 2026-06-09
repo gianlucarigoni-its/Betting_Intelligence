@@ -32,13 +32,19 @@ class HistoricalPoissonBacktestConfig:
     test_end_date: str = "2999-12-31"
     initial_bankroll: float = 1000.0
     flat_stake: float = 10.0
-    min_edge_pct: float = 3.0
-    max_edge_pct: float | None = 12.0
+    min_edge_pct: float = 5.0
+    max_edge_pct: float | None = 6.0
     min_model_probability: float = 0.55
-    max_bookmaker_odds: float | None = 2.0
+    max_bookmaker_odds: float | None = 1.8
+    away_min_edge_pct: float | None = 99.0
+    away_min_model_probability: float | None = 0.58
+    away_max_bookmaker_odds: float | None = 1.8
+    allow_away_bets: bool = False
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
     recent_form_half_life_matches: float = 0.0
+    home_lambda_multiplier: float = 1.0
+    away_lambda_multiplier: float = 1.0
 
 @dataclass(frozen=True, slots=True)
 class RollingPoissonProbabilities:
@@ -77,10 +83,18 @@ class HistoricalPoissonBacktester:
                     f"max_edge_pct={config.max_edge_pct}; "
                     f"min_model_probability={config.min_model_probability}; "
                     f"max_bookmaker_odds={config.max_bookmaker_odds}; "
-                    f"min_prior_matches={config.min_prior_matches}; "
+                    f"away_min_edge_pct={config.away_min_edge_pct}; "
+                f"away_min_model_probability={config.away_min_model_probability}; "
+                f"away_max_bookmaker_odds={config.away_max_bookmaker_odds}; "
+                f"allow_away_bets={config.allow_away_bets}; "
+                f"min_prior_matches={config.min_prior_matches}; "
                     f"flat_stake={config.flat_stake}; "
                     f"recent_form_half_life_matches="
-                    f"{config.recent_form_half_life_matches}"
+                    f"{config.recent_form_half_life_matches}; "
+                    f"home_lambda_multiplier="
+                    f"{config.home_lambda_multiplier}; "
+                    f"away_lambda_multiplier="
+                    f"{config.away_lambda_multiplier}"
                 ),
             )
         )
@@ -102,6 +116,10 @@ class HistoricalPoissonBacktester:
                 max_edge_pct=config.max_edge_pct,
                 min_model_probability=config.min_model_probability,
                 max_bookmaker_odds=config.max_bookmaker_odds,
+                away_min_edge_pct=config.away_min_edge_pct,
+                away_min_model_probability=config.away_min_model_probability,
+                away_max_bookmaker_odds=config.away_max_bookmaker_odds,
+                allow_away_bets=config.allow_away_bets,
             )
             bet_selection: str | None = candidate[0] if candidate is not None else None
             bankroll_before = run.initial_bankroll + run.profit_loss
@@ -266,8 +284,18 @@ class HistoricalPoissonBacktester:
             shrinkage_matches=config.shrinkage_matches,
         )
 
-        lambda_home = league_home_goals * home_attack * away_defense
-        lambda_away = league_away_goals * away_attack * home_defense
+        lambda_home = (
+            league_home_goals
+            * home_attack
+            * away_defense
+            * config.home_lambda_multiplier
+        )
+        lambda_away = (
+            league_away_goals
+            * away_attack
+            * home_defense
+            * config.away_lambda_multiplier
+        )
 
         lambda_home = self._clamp_lambda(lambda_home)
         lambda_away = self._clamp_lambda(lambda_away)
@@ -302,15 +330,27 @@ class HistoricalPoissonBacktester:
         max_edge_pct: float | None,
         min_model_probability: float,
         max_bookmaker_odds: float | None,
+        away_min_edge_pct: float | None,
+        away_min_model_probability: float | None,
+        away_max_bookmaker_odds: float | None,
+        allow_away_bets: bool,
     ) -> tuple[str, HistoricalOddSnapshot, float, float] | None:
         candidates: list[tuple[str, HistoricalOddSnapshot, float, float]] = []
         for selection, odds_snapshot in odds_by_selection.items():
+            if selection == "AWAY" and not allow_away_bets:
+                continue
             if max_bookmaker_odds is not None and odds_snapshot.odd_value > max_bookmaker_odds:
                 continue
 
             model_probability = self._probability_for_selection(probabilities, selection)
             if model_probability < min_model_probability:
                 continue
+
+            if selection == "AWAY":
+                if away_min_model_probability is not None and model_probability < away_min_model_probability:
+                    continue
+                if away_max_bookmaker_odds is not None and odds_snapshot.odd_value > away_max_bookmaker_odds:
+                    continue
 
             value_metrics = self._value_calculator.calculate(
                 ValueMetricsInput(
@@ -319,6 +359,8 @@ class HistoricalPoissonBacktester:
                 )
             )
             if value_metrics.edge_pct < min_edge_pct:
+                continue
+            if selection == "AWAY" and away_min_edge_pct is not None and value_metrics.edge_pct < away_min_edge_pct:
                 continue
             if max_edge_pct is not None and value_metrics.edge_pct > max_edge_pct:
                 continue

@@ -48,12 +48,19 @@ LOGGER = logging.getLogger(__name__)
 class BacktestDefaults:
     initial_bankroll: float = 1000.0
     flat_stake: float = 10.0
-    min_edge_pct: float = 3.0
-    max_edge_pct: float = 12.0
+    min_edge_pct: float = 5.0
+    max_edge_pct: float = 6.0
     min_model_probability: float = 0.55
-    max_bookmaker_odds: float = 2.0
+    max_bookmaker_odds: float = 1.8
+    away_min_edge_pct: float = 99.0
+    away_min_model_probability: float = 0.58
+    away_max_bookmaker_odds: float = 1.8
+    allow_away_bets: bool = False
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
+    recent_form_half_life_matches: float = 0.0
+    home_lambda_multiplier: float = 1.0
+    away_lambda_multiplier: float = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -167,8 +174,21 @@ def _phase_backtest(
                             max_edge_pct=defaults.max_edge_pct,
                             min_model_probability=defaults.min_model_probability,
                             max_bookmaker_odds=defaults.max_bookmaker_odds,
+                            away_min_edge_pct=defaults.away_min_edge_pct,
+                            away_min_model_probability=defaults.away_min_model_probability,
+                            away_max_bookmaker_odds=defaults.away_max_bookmaker_odds,
+                            allow_away_bets=defaults.allow_away_bets,
                             min_prior_matches=defaults.min_prior_matches,
                             shrinkage_matches=defaults.shrinkage_matches,
+                            recent_form_half_life_matches=(
+                                defaults.recent_form_half_life_matches
+                            ),
+                            home_lambda_multiplier=(
+                                defaults.home_lambda_multiplier
+                            ),
+                            away_lambda_multiplier=(
+                                defaults.away_lambda_multiplier
+                            ),
                         )
                     )
                     LOGGER.info(
@@ -239,14 +259,43 @@ def _parse_args() -> argparse.Namespace:
     # Parametri backtest
     parser.add_argument("--initial-bankroll", type=float, default=1000.0)
     parser.add_argument("--flat-stake", type=float, default=10.0)
-    parser.add_argument("--min-edge-pct", type=float, default=3.0)
-    parser.add_argument("--max-edge-pct", type=float, default=12.0)
+    parser.add_argument("--min-edge-pct", type=float, default=5.0)
+    parser.add_argument("--max-edge-pct", type=float, default=6.0)
     parser.add_argument(
         "--min-model-probability", type=float, default=0.55,
     )
-    parser.add_argument("--max-bookmaker-odds", type=float, default=2.0)
+    parser.add_argument("--max-bookmaker-odds", type=float, default=1.8)
+    parser.add_argument("--away-min-edge-pct", type=float, default=99.0)
+    parser.add_argument("--away-min-model-probability", type=float, default=0.58)
+    parser.add_argument("--away-max-bookmaker-odds", type=float, default=1.8)
+    parser.add_argument(
+        "--allow-away-bets",
+        action="store_true",
+        help="Abilita la selezione AWAY oltre ai filtri globali.",
+    )
     parser.add_argument("--min-prior-matches", type=int, default=5)
     parser.add_argument("--shrinkage-matches", type=int, default=10)
+    parser.add_argument(
+        "--recent-form-half-life-matches",
+        type=float,
+        default=0.0,
+        help=(
+            "Half-life in numero di partite per pesare la forma recente. "
+            "0.0 disattiva il peso temporale e usa la media semplice."
+        ),
+    )
+    parser.add_argument(
+        "--home-lambda-multiplier",
+        type=float,
+        default=1.0,
+        help="Moltiplicatore sperimentale per lambda_home.",
+    )
+    parser.add_argument(
+        "--away-lambda-multiplier",
+        type=float,
+        default=1.0,
+        help="Moltiplicatore sperimentale per lambda_away.",
+    )
 
     return parser.parse_args()
 
@@ -278,8 +327,15 @@ def main() -> None:
         max_edge_pct=args.max_edge_pct,
         min_model_probability=args.min_model_probability,
         max_bookmaker_odds=args.max_bookmaker_odds,
+        away_min_edge_pct=args.away_min_edge_pct,
+        away_min_model_probability=args.away_min_model_probability,
+        away_max_bookmaker_odds=args.away_max_bookmaker_odds,
+        allow_away_bets=args.allow_away_bets,
         min_prior_matches=args.min_prior_matches,
         shrinkage_matches=args.shrinkage_matches,
+        recent_form_half_life_matches=args.recent_form_half_life_matches,
+        home_lambda_multiplier=args.home_lambda_multiplier,
+        away_lambda_multiplier=args.away_lambda_multiplier,
     )
 
     # Fase 1 — Import
