@@ -62,5 +62,11 @@ def test_historical_poisson_backtester_records_and_settles_bets() -> None:
     assert run.total_bets >= 1
     assert run.total_staked == run.total_bets * 10.0
     assert run.final_bankroll is not None
-    assert session.query(BacktestBet).count() == run.total_bets
-    assert all(bet.result in {"won", "lost"} for bet in session.query(BacktestBet).all())
+    all_records = session.query(BacktestBet).all()
+    real_bets = [bet for bet in all_records if bet.is_bet]
+
+    assert len(all_records) >= run.total_bets
+    assert len(real_bets) == run.total_bets
+    assert all(bet.stake > 0 for bet in real_bets)
+    assert all(bet.stake == 0 for bet in all_records if not bet.is_bet)
+    assert all(bet.result in {"won", "lost"} for bet in all_records)

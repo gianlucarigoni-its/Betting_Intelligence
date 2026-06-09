@@ -38,7 +38,7 @@ class HistoricalPoissonBacktestConfig:
     max_bookmaker_odds: float | None = 2.0
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
-
+    recent_form_half_life_matches: float = 0.0
 
 @dataclass(frozen=True, slots=True)
 class RollingPoissonProbabilities:
@@ -78,7 +78,9 @@ class HistoricalPoissonBacktester:
                     f"min_model_probability={config.min_model_probability}; "
                     f"max_bookmaker_odds={config.max_bookmaker_odds}; "
                     f"min_prior_matches={config.min_prior_matches}; "
-                    f"flat_stake={config.flat_stake}"
+                    f"flat_stake={config.flat_stake}; "
+                    f"recent_form_half_life_matches="
+                    f"{config.recent_form_half_life_matches}"
                 ),
             )
         )
@@ -187,6 +189,7 @@ class HistoricalPoissonBacktester:
                 Match.score_away_ft.is_not(None),
                 Match.match_date < match.match_date,
             )
+            .order_by(Match.match_date.asc(), Match.id.asc())
             .all()
         )
         if len(prior_matches) < config.min_prior_matches:
@@ -208,28 +211,57 @@ class HistoricalPoissonBacktester:
         ):
             return None
 
-        league_home_goals = sum(item.score_home_ft or 0 for item in prior_matches) / len(prior_matches)
-        league_away_goals = sum(item.score_away_ft or 0 for item in prior_matches) / len(prior_matches)
-        league_home_goals = max(league_home_goals, 0.2)
-        league_away_goals = max(league_away_goals, 0.2)
+        half_life = config.recent_form_half_life_matches
+        league_home_goals = self._avg_home_goals_for(
+            prior_matches,
+            half_life_matches=half_life,
+        )
+        league_away_goals = self._avg_away_goals_for(
+            prior_matches,
+            half_life_matches=half_life,
+        )
 
         home_attack = self._shrink_ratio(
-            value=self._avg_home_goals_for(home_home_prior) / league_home_goals,
+            value=(
+                self._avg_home_goals_for(
+                    home_home_prior,
+                    half_life_matches=half_life,
+                )
+                / league_home_goals
+            ),
             sample_size=len(home_home_prior),
             shrinkage_matches=config.shrinkage_matches,
         )
         home_defense = self._shrink_ratio(
-            value=self._avg_home_goals_against(home_home_prior) / league_away_goals,
+            value=(
+                self._avg_home_goals_against(
+                    home_home_prior,
+                    half_life_matches=half_life,
+                )
+                / league_away_goals
+            ),
             sample_size=len(home_home_prior),
             shrinkage_matches=config.shrinkage_matches,
         )
         away_attack = self._shrink_ratio(
-            value=self._avg_away_goals_for(away_away_prior) / league_away_goals,
+            value=(
+                self._avg_away_goals_for(
+                    away_away_prior,
+                    half_life_matches=half_life,
+                )
+                / league_away_goals
+            ),
             sample_size=len(away_away_prior),
             shrinkage_matches=config.shrinkage_matches,
         )
         away_defense = self._shrink_ratio(
-            value=self._avg_away_goals_against(away_away_prior) / league_home_goals,
+            value=(
+                self._avg_away_goals_against(
+                    away_away_prior,
+                    half_life_matches=half_life,
+                )
+                / league_home_goals
+            ),
             sample_size=len(away_away_prior),
             shrinkage_matches=config.shrinkage_matches,
         )
@@ -305,20 +337,97 @@ class HistoricalPoissonBacktester:
         return max(candidates, key=lambda item: item[2])
 
     @staticmethod
-    def _avg_home_goals_for(matches: list[Match]) -> float:
-        return max(sum(match.score_home_ft or 0 for match in matches) / len(matches), 0.2)
+    def _avg_home_goals_for(
+        matches: list[Match],
+        *,
+        half_life_matches: float,
+    ) -> float:
+        return HistoricalPoissonBacktester._weighted_average_goals(
+            matches=matches,
+            goal_attr="score_home_ft",
+            half_life_matches=half_life_matches,
+        )
 
     @staticmethod
-    def _avg_home_goals_against(matches: list[Match]) -> float:
-        return max(sum(match.score_away_ft or 0 for match in matches) / len(matches), 0.2)
+    def _avg_home_goals_against(
+        matches: list[Match],
+        *,
+        half_life_matches: float,
+    ) -> float:
+        return HistoricalPoissonBacktester._weighted_average_goals(
+            matches=matches,
+            goal_attr="score_away_ft",
+            half_life_matches=half_life_matches,
+        )
 
     @staticmethod
-    def _avg_away_goals_for(matches: list[Match]) -> float:
-        return max(sum(match.score_away_ft or 0 for match in matches) / len(matches), 0.2)
+    def _avg_away_goals_for(
+        matches: list[Match],
+        *,
+        half_life_matches: float,
+    ) -> float:
+        return HistoricalPoissonBacktester._weighted_average_goals(
+            matches=matches,
+            goal_attr="score_away_ft",
+            half_life_matches=half_life_matches,
+        )
 
     @staticmethod
-    def _avg_away_goals_against(matches: list[Match]) -> float:
-        return max(sum(match.score_home_ft or 0 for match in matches) / len(matches), 0.2)
+    def _avg_away_goals_against(
+        matches: list[Match],
+        *,
+        half_life_matches: float,
+    ) -> float:
+        return HistoricalPoissonBacktester._weighted_average_goals(
+            matches=matches,
+            goal_attr="score_home_ft",
+            half_life_matches=half_life_matches,
+        )
+
+    @staticmethod
+    def _weighted_average_goals(
+        *,
+        matches: list[Match],
+        goal_attr: str,
+        half_life_matches: float,
+    ) -> float:
+        """
+        Calcola una media gol pesata per recenza.
+
+        Le partite più recenti pesano di più. Con half-life = 8,
+        una partita distante 8 gare pesa circa metà rispetto all'ultima.
+        """
+        if not matches:
+            return 0.2
+
+        if half_life_matches <= 0:
+            simple_average = sum(
+                float(getattr(match, goal_attr) or 0)
+                for match in matches
+            ) / len(matches)
+            return max(simple_average, 0.2)
+
+        ordered_matches = sorted(
+            matches,
+            key=lambda item: (item.match_date, item.id),
+        )
+
+        weighted_sum = 0.0
+        total_weight = 0.0
+        latest_index = len(ordered_matches) - 1
+
+        for index, match in enumerate(ordered_matches):
+            distance_from_latest = latest_index - index
+            weight = 0.5 ** (distance_from_latest / half_life_matches)
+            goals = float(getattr(match, goal_attr) or 0)
+
+            weighted_sum += goals * weight
+            total_weight += weight
+
+        if total_weight <= 0:
+            return 0.2
+
+        return max(weighted_sum / total_weight, 0.2)
 
     @staticmethod
     def _shrink_ratio(*, value: float, sample_size: int, shrinkage_matches: int) -> float:
