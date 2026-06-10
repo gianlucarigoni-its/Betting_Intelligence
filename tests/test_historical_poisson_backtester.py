@@ -78,7 +78,10 @@ def test_historical_poisson_backtester_applies_away_specific_filters() -> None:
     session = build_session()
     backtester = HistoricalPoissonBacktester(session)
     selector = backtester._select_best_value_candidate  # type: ignore[attr-defined]
-    fake_probabilities = SimpleNamespace(home=0.615, draw=0.18, away=0.20)
+    fake_probabilities = SimpleNamespace(
+        home=0.615, draw=0.18, away=0.20,
+        lambda_home=1.4, lambda_away=1.0, form_goal_diff_delta=0.1,
+    )
     odds_by_selection = {
         "HOME": SimpleNamespace(selection="HOME", odd_value=1.80, bookmaker_id=1),
         "DRAW": SimpleNamespace(selection="DRAW", odd_value=3.50, bookmaker_id=2),
@@ -92,6 +95,15 @@ def test_historical_poisson_backtester_applies_away_specific_filters() -> None:
         max_edge_pct=6.0,
         min_model_probability=0.55,
         max_bookmaker_odds=1.8,
+        allow_home_bets=True,
+        allow_draw_bets=False,
+        home_min_form_goal_diff_delta=None,
+        draw_min_edge_pct=4.0,
+        draw_max_edge_pct=9.0,
+        draw_min_model_probability=0.24,
+        draw_max_bookmaker_odds=4.2,
+        draw_max_lambda_gap=0.25,
+        draw_max_abs_form_goal_diff_delta=0.35,
         away_min_edge_pct=99.0,
         away_min_model_probability=0.58,
         away_max_bookmaker_odds=1.8,
@@ -107,7 +119,10 @@ def test_historical_poisson_backtester_disables_away_by_default() -> None:
     backtester = HistoricalPoissonBacktester(session)
     selector = backtester._select_best_value_candidate  # type: ignore[attr-defined]
 
-    fake_probabilities = SimpleNamespace(home=0.61, draw=0.15, away=0.27)
+    fake_probabilities = SimpleNamespace(
+        home=0.61, draw=0.15, away=0.27,
+        lambda_home=1.3, lambda_away=1.1, form_goal_diff_delta=0.0,
+    )
     odds_by_selection = {
         "HOME": SimpleNamespace(selection="HOME", odd_value=1.80, bookmaker_id=1),
         "DRAW": SimpleNamespace(selection="DRAW", odd_value=3.80, bookmaker_id=2),
@@ -121,6 +136,15 @@ def test_historical_poisson_backtester_disables_away_by_default() -> None:
         max_edge_pct=6.0,
         min_model_probability=0.55,
         max_bookmaker_odds=1.8,
+        allow_home_bets=True,
+        allow_draw_bets=False,
+        home_min_form_goal_diff_delta=None,
+        draw_min_edge_pct=4.0,
+        draw_max_edge_pct=9.0,
+        draw_min_model_probability=0.24,
+        draw_max_bookmaker_odds=4.2,
+        draw_max_lambda_gap=0.25,
+        draw_max_abs_form_goal_diff_delta=0.35,
         away_min_edge_pct=99.0,
         away_min_model_probability=0.58,
         away_max_bookmaker_odds=1.8,
@@ -129,3 +153,44 @@ def test_historical_poisson_backtester_disables_away_by_default() -> None:
 
     assert candidate is not None
     assert candidate[0] == "HOME"
+
+
+def test_historical_poisson_backtester_can_select_draw_when_balanced() -> None:
+    session = build_session()
+    backtester = HistoricalPoissonBacktester(session)
+    selector = backtester._select_best_value_candidate  # type: ignore[attr-defined]
+
+    fake_probabilities = SimpleNamespace(
+        home=0.34, draw=0.29, away=0.37,
+        lambda_home=1.2, lambda_away=1.1, form_goal_diff_delta=0.05,
+    )
+    odds_by_selection = {
+        "HOME": SimpleNamespace(selection="HOME", odd_value=2.20, bookmaker_id=1),
+        "DRAW": SimpleNamespace(selection="DRAW", odd_value=3.20, bookmaker_id=2),
+        "AWAY": SimpleNamespace(selection="AWAY", odd_value=2.40, bookmaker_id=3),
+    }
+
+    candidate = selector(
+        probabilities=fake_probabilities,
+        odds_by_selection=odds_by_selection,
+        min_edge_pct=5.0,
+        max_edge_pct=6.0,
+        min_model_probability=0.55,
+        max_bookmaker_odds=1.8,
+        allow_home_bets=True,
+        allow_draw_bets=True,
+        home_min_form_goal_diff_delta=None,
+        draw_min_edge_pct=-3.0,
+        draw_max_edge_pct=1.0,
+        draw_min_model_probability=0.24,
+        draw_max_bookmaker_odds=4.2,
+        draw_max_lambda_gap=0.25,
+        draw_max_abs_form_goal_diff_delta=0.35,
+        away_min_edge_pct=99.0,
+        away_min_model_probability=0.58,
+        away_max_bookmaker_odds=1.8,
+        allow_away_bets=False,
+    )
+
+    assert candidate is not None
+    assert candidate[0] == "DRAW"

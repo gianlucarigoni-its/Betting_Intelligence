@@ -15,7 +15,7 @@ from pathlib import Path
 
 from backtesting.league_policy import LeagueBettingPolicy, LeaguePolicyStore
 from database.base import SessionLocal
-from database.models import BacktestBet, BacktestRun, Competition
+from database.models import BacktestBet, BacktestRun, Competition, Match
 from historical.batch_importer import LEAGUE_CATALOG, LeagueConfig
 
 LOGGER = logging.getLogger(__name__)
@@ -109,6 +109,23 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _recent_goal_difference(matches: list[Match], team_id: int, window_matches: int = 6) -> float:
+    team_matches = [
+        match for match in matches
+        if match.home_team_id == team_id or match.away_team_id == team_id
+    ]
+    if not team_matches:
+        return 0.0
+    ordered = sorted(team_matches, key=lambda item: (item.match_date, item.id))[-window_matches:]
+    total = 0.0
+    for match in ordered:
+        if match.home_team_id == team_id:
+            total += float((match.score_home_ft or 0) - (match.score_away_ft or 0))
+        else:
+            total += float((match.score_away_ft or 0) - (match.score_home_ft or 0))
+    return total / len(ordered)
+
+
 def _simulate_season(
     session,
     *,
@@ -125,14 +142,31 @@ def _simulate_season(
     away_lambda_multiplier: float,
 ) -> SimulationMetrics:
     del (
-        test_start_date,
-        test_end_date,
         min_prior_matches,
         shrinkage_matches,
         recent_form_half_life_matches,
         home_lambda_multiplier,
         away_lambda_multiplier,
     )
+
+    competition_matches = (
+        session.query(Match)
+        .filter(
+            Match.competition_id == competition_id,
+            Match.status == "finished",
+            Match.score_home_ft.is_not(None),
+            Match.score_away_ft.is_not(None),
+            Match.match_date <= test_end_date,
+        )
+        .order_by(Match.match_date.asc(), Match.id.asc())
+        .all()
+    )
+    test_matches = [
+        match for match in competition_matches
+        if test_start_date <= match.match_date <= test_end_date
+    ]
+    test_ids = {match.id for match in test_matches}
+
     latest_run = (
         session.query(BacktestRun)
         .filter(BacktestRun.notes.contains(f"competition_id={competition_id};"))
@@ -147,52 +181,80 @@ def _simulate_season(
         .filter(BacktestBet.backtest_run_id == latest_run.id)
         .all()
     )
-    by_match: dict[int, list[BacktestBet]] = {}
+    records_by_match: dict[int, list[BacktestBet]] = {}
     for record in records:
-        by_match.setdefault(record.match_id, []).append(record)
+        if record.match_id in test_ids:
+            records_by_match.setdefault(record.match_id, []).append(record)
 
     bankroll = initial_bankroll
     profit_loss = 0.0
     bets = 0
-    for match_records in by_match.values():
+    for index, match in enumerate(test_matches):
+        match_records = records_by_match.get(match.id, [])
+        if not match_records:
+            continue
+
+        prior_matches = competition_matches[:index]
+        form_delta = (
+            _recent_goal_difference(prior_matches, match.home_team_id)
+            - _recent_goal_difference(prior_matches, match.away_team_id)
+        )
+        lambda_gap = abs(
+            float(next((r.reason or "" for r in match_records), "").split("lambda_home=")[-1].split(";")[0] or 0.0)
+            - float(next((r.reason or "" for r in match_records), "").split("lambda_away=")[-1].split(";")[0] or 0.0)
+        ) if match_records else 0.0
+
         candidates: list[BacktestBet] = []
         for record in match_records:
+            if record.selection == "HOME" and not policy.allow_home_bets:
+                continue
+            if record.selection == "DRAW" and not policy.allow_draw_bets:
+                continue
             if record.selection == "AWAY" and not policy.allow_away_bets:
                 continue
+
             if policy.max_bookmaker_odds is not None and record.bookmaker_odds > policy.max_bookmaker_odds:
                 continue
             if record.model_probability < policy.min_model_probability:
                 continue
-            if record.selection == "AWAY":
-                if (
-                    policy.away_min_model_probability is not None
-                    and record.model_probability < policy.away_min_model_probability
-                ):
+
+            selection_min_edge = policy.min_edge_pct
+            selection_max_edge = policy.max_edge_pct
+            selection_min_probability = policy.min_model_probability
+            selection_max_odds = policy.max_bookmaker_odds
+
+            if record.selection == "HOME":
+                if policy.home_min_form_goal_diff_delta is not None and form_delta < policy.home_min_form_goal_diff_delta:
                     continue
-                if (
-                    policy.away_max_bookmaker_odds is not None
-                    and record.bookmaker_odds > policy.away_max_bookmaker_odds
-                ):
+            elif record.selection == "DRAW":
+                selection_min_edge = policy.draw_min_edge_pct
+                selection_max_edge = policy.draw_max_edge_pct
+                selection_min_probability = policy.draw_min_model_probability
+                selection_max_odds = policy.draw_max_bookmaker_odds
+                if policy.draw_max_lambda_gap is not None and lambda_gap > policy.draw_max_lambda_gap:
                     continue
-            if record.edge_pct < policy.min_edge_pct:
+                if policy.draw_max_abs_form_goal_diff_delta is not None and abs(form_delta) > policy.draw_max_abs_form_goal_diff_delta:
+                    continue
+            else:
+                selection_min_edge = policy.away_min_edge_pct if policy.away_min_edge_pct is not None else selection_min_edge
+                selection_min_probability = policy.away_min_model_probability if policy.away_min_model_probability is not None else selection_min_probability
+                selection_max_odds = policy.away_max_bookmaker_odds if policy.away_max_bookmaker_odds is not None else selection_max_odds
+
+            if selection_max_odds is not None and record.bookmaker_odds > selection_max_odds:
                 continue
-            if (
-                record.selection == "AWAY"
-                and policy.away_min_edge_pct is not None
-                and record.edge_pct < policy.away_min_edge_pct
-            ):
+            if record.model_probability < selection_min_probability:
                 continue
-            if policy.max_edge_pct is not None and record.edge_pct > policy.max_edge_pct:
+            if record.edge_pct < selection_min_edge:
                 continue
+            if selection_max_edge is not None and record.edge_pct > selection_max_edge:
+                continue
+
             candidates.append(record)
 
-        if not candidates:
+        if not candidates or bankroll <= 0:
             continue
 
         candidate = max(candidates, key=lambda item: item.edge_pct)
-        if bankroll <= 0:
-            break
-
         stake = min(flat_stake, bankroll)
         if candidate.result == "won":
             delta = stake * (candidate.bookmaker_odds - 1.0)
@@ -305,18 +367,56 @@ def _candidate_grid() -> tuple[LeagueBettingPolicy, ...]:
     edge_pairs = ((5.0, 6.0), (5.0, 6.5), (5.5, 6.5))
     odds_caps = (1.8, 2.0)
     model_probs = (0.53, 0.55, 0.57)
-    away_modes = (
+
+    grid: list[LeagueBettingPolicy] = []
+    for min_edge, max_edge in edge_pairs:
+        for max_odds in odds_caps:
+            for min_prob in model_probs:
+                for min_form_delta in (None, -0.25, 0.0):
+                    grid.append(
+                        LeagueBettingPolicy(
+                            allow_home_bets=True,
+                            allow_draw_bets=False,
+                            min_edge_pct=min_edge,
+                            max_edge_pct=max_edge,
+                            min_model_probability=min_prob,
+                            max_bookmaker_odds=max_odds,
+                            home_min_form_goal_diff_delta=min_form_delta,
+                            away_min_edge_pct=99.0,
+                            away_min_model_probability=0.58,
+                            away_max_bookmaker_odds=1.8,
+                            allow_away_bets=False,
+                        )
+                    )
+
+    for draw_edge in ((4.0, 8.0), (5.0, 9.0)):
+        for draw_lambda_gap in (0.20, 0.30):
+            for draw_form_gap in (0.25, 0.40):
+                grid.append(
+                    LeagueBettingPolicy(
+                        allow_home_bets=True,
+                        allow_draw_bets=True,
+                        min_edge_pct=5.0,
+                        max_edge_pct=6.0,
+                        min_model_probability=0.53,
+                        max_bookmaker_odds=1.8,
+                        draw_min_edge_pct=draw_edge[0],
+                        draw_max_edge_pct=draw_edge[1],
+                        draw_min_model_probability=0.24,
+                        draw_max_bookmaker_odds=4.2,
+                        draw_max_lambda_gap=draw_lambda_gap,
+                        draw_max_abs_form_goal_diff_delta=draw_form_gap,
+                        away_min_edge_pct=99.0,
+                        away_min_model_probability=0.58,
+                        away_max_bookmaker_odds=1.8,
+                        allow_away_bets=False,
+                    )
+                )
+
+    grid.append(
         LeagueBettingPolicy(
-            min_edge_pct=5.0,
-            max_edge_pct=6.0,
-            min_model_probability=0.55,
-            max_bookmaker_odds=1.8,
-            away_min_edge_pct=99.0,
-            away_min_model_probability=0.58,
-            away_max_bookmaker_odds=1.8,
-            allow_away_bets=False,
-        ),
-        LeagueBettingPolicy(
+            allow_home_bets=True,
+            allow_draw_bets=False,
             min_edge_pct=5.0,
             max_edge_pct=6.5,
             min_model_probability=0.53,
@@ -325,26 +425,8 @@ def _candidate_grid() -> tuple[LeagueBettingPolicy, ...]:
             away_min_model_probability=0.60,
             away_max_bookmaker_odds=1.7,
             allow_away_bets=True,
-        ),
+        )
     )
-
-    grid: list[LeagueBettingPolicy] = []
-    for min_edge, max_edge in edge_pairs:
-        for max_odds in odds_caps:
-            for min_prob in model_probs:
-                grid.append(
-                    LeagueBettingPolicy(
-                        min_edge_pct=min_edge,
-                        max_edge_pct=max_edge,
-                        min_model_probability=min_prob,
-                        max_bookmaker_odds=max_odds,
-                        away_min_edge_pct=99.0,
-                        away_min_model_probability=0.58,
-                        away_max_bookmaker_odds=1.8,
-                        allow_away_bets=False,
-                    )
-                )
-    grid.extend(away_modes)
     return tuple(grid)
 
 

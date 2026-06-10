@@ -28,10 +28,19 @@ LOGGER = logging.getLogger(__name__)
 class ValidationDefaults:
     initial_bankroll: float = 1000.0
     flat_stake: float = 10.0
+    allow_home_bets: bool = True
+    allow_draw_bets: bool = False
     min_edge_pct: float = 5.0
     max_edge_pct: float = 6.0
     min_model_probability: float = 0.55
     max_bookmaker_odds: float = 1.8
+    home_min_form_goal_diff_delta: float | None = None
+    draw_min_edge_pct: float = 4.0
+    draw_max_edge_pct: float | None = 9.0
+    draw_min_model_probability: float = 0.24
+    draw_max_bookmaker_odds: float = 4.2
+    draw_max_lambda_gap: float | None = 0.25
+    draw_max_abs_form_goal_diff_delta: float | None = 0.35
     away_min_edge_pct: float = 99.0
     away_min_model_probability: float = 0.58
     away_max_bookmaker_odds: float = 1.8
@@ -144,10 +153,23 @@ def _phase_backtest(
 
                 league_policy = policy_map.get(league.label)
                 effective = league_policy or LeagueBettingPolicy(
+                    allow_home_bets=defaults.allow_home_bets,
+                    allow_draw_bets=defaults.allow_draw_bets,
                     min_edge_pct=defaults.min_edge_pct,
                     max_edge_pct=defaults.max_edge_pct,
                     min_model_probability=defaults.min_model_probability,
                     max_bookmaker_odds=defaults.max_bookmaker_odds,
+                    home_min_form_goal_diff_delta=(
+                        defaults.home_min_form_goal_diff_delta
+                    ),
+                    draw_min_edge_pct=defaults.draw_min_edge_pct,
+                    draw_max_edge_pct=defaults.draw_max_edge_pct,
+                    draw_min_model_probability=defaults.draw_min_model_probability,
+                    draw_max_bookmaker_odds=defaults.draw_max_bookmaker_odds,
+                    draw_max_lambda_gap=defaults.draw_max_lambda_gap,
+                    draw_max_abs_form_goal_diff_delta=(
+                        defaults.draw_max_abs_form_goal_diff_delta
+                    ),
                     away_min_edge_pct=defaults.away_min_edge_pct,
                     away_min_model_probability=defaults.away_min_model_probability,
                     away_max_bookmaker_odds=defaults.away_max_bookmaker_odds,

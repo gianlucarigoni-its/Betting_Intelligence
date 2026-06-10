@@ -36,6 +36,15 @@ class HistoricalPoissonBacktestConfig:
     max_edge_pct: float | None = 6.0
     min_model_probability: float = 0.55
     max_bookmaker_odds: float | None = 1.8
+    allow_home_bets: bool = True
+    allow_draw_bets: bool = False
+    home_min_form_goal_diff_delta: float | None = None
+    draw_min_edge_pct: float = 4.0
+    draw_max_edge_pct: float | None = 9.0
+    draw_min_model_probability: float = 0.24
+    draw_max_bookmaker_odds: float | None = 4.2
+    draw_max_lambda_gap: float | None = 0.25
+    draw_max_abs_form_goal_diff_delta: float | None = 0.35
     away_min_edge_pct: float | None = 99.0
     away_min_model_probability: float | None = 0.58
     away_max_bookmaker_odds: float | None = 1.8
@@ -55,6 +64,7 @@ class RollingPoissonProbabilities:
     away: float
     lambda_home: float
     lambda_away: float
+    form_goal_diff_delta: float
 
 
 class HistoricalPoissonBacktester:
@@ -83,6 +93,18 @@ class HistoricalPoissonBacktester:
                     f"max_edge_pct={config.max_edge_pct}; "
                     f"min_model_probability={config.min_model_probability}; "
                     f"max_bookmaker_odds={config.max_bookmaker_odds}; "
+                    f"allow_home_bets={config.allow_home_bets}; "
+                    f"allow_draw_bets={config.allow_draw_bets}; "
+                    f"home_min_form_goal_diff_delta="
+                    f"{config.home_min_form_goal_diff_delta}; "
+                    f"draw_min_edge_pct={config.draw_min_edge_pct}; "
+                    f"draw_max_edge_pct={config.draw_max_edge_pct}; "
+                    f"draw_min_model_probability="
+                    f"{config.draw_min_model_probability}; "
+                    f"draw_max_bookmaker_odds={config.draw_max_bookmaker_odds}; "
+                    f"draw_max_lambda_gap={config.draw_max_lambda_gap}; "
+                    f"draw_max_abs_form_goal_diff_delta="
+                    f"{config.draw_max_abs_form_goal_diff_delta}; "
                     f"away_min_edge_pct={config.away_min_edge_pct}; "
                 f"away_min_model_probability={config.away_min_model_probability}; "
                 f"away_max_bookmaker_odds={config.away_max_bookmaker_odds}; "
@@ -116,6 +138,19 @@ class HistoricalPoissonBacktester:
                 max_edge_pct=config.max_edge_pct,
                 min_model_probability=config.min_model_probability,
                 max_bookmaker_odds=config.max_bookmaker_odds,
+                allow_home_bets=config.allow_home_bets,
+                allow_draw_bets=config.allow_draw_bets,
+                home_min_form_goal_diff_delta=(
+                    config.home_min_form_goal_diff_delta
+                ),
+                draw_min_edge_pct=config.draw_min_edge_pct,
+                draw_max_edge_pct=config.draw_max_edge_pct,
+                draw_min_model_probability=config.draw_min_model_probability,
+                draw_max_bookmaker_odds=config.draw_max_bookmaker_odds,
+                draw_max_lambda_gap=config.draw_max_lambda_gap,
+                draw_max_abs_form_goal_diff_delta=(
+                    config.draw_max_abs_form_goal_diff_delta
+                ),
                 away_min_edge_pct=config.away_min_edge_pct,
                 away_min_model_probability=config.away_min_model_probability,
                 away_max_bookmaker_odds=config.away_max_bookmaker_odds,
@@ -162,7 +197,9 @@ class HistoricalPoissonBacktester:
                         placed_at=odds_snapshot.snapshot_time,
                         reason=(
                             f"lambda_home={probabilities.lambda_home:.3f}; "
-                            f"lambda_away={probabilities.lambda_away:.3f}"
+                            f"lambda_away={probabilities.lambda_away:.3f}; "
+                            f"form_gd_delta="
+                            f"{probabilities.form_goal_diff_delta:.3f}"
                         ),
                     )
                 )
@@ -300,6 +337,14 @@ class HistoricalPoissonBacktester:
         lambda_home = self._clamp_lambda(lambda_home)
         lambda_away = self._clamp_lambda(lambda_away)
         home_prob, draw_prob, away_prob = self._aggregate_1x2(lambda_home, lambda_away)
+        form_goal_diff_delta = (
+            self._recent_goal_difference(
+                prior_matches, match.home_team_id, window_matches=6
+            )
+            - self._recent_goal_difference(
+                prior_matches, match.away_team_id, window_matches=6
+            )
+        )
 
         return RollingPoissonProbabilities(
             home=home_prob,
@@ -307,6 +352,7 @@ class HistoricalPoissonBacktester:
             away=away_prob,
             lambda_home=lambda_home,
             lambda_away=lambda_away,
+            form_goal_diff_delta=form_goal_diff_delta,
         )
 
     def _load_closing_odds(self, match_id: int) -> dict[str, HistoricalOddSnapshot]:
@@ -330,20 +376,60 @@ class HistoricalPoissonBacktester:
         max_edge_pct: float | None,
         min_model_probability: float,
         max_bookmaker_odds: float | None,
+        allow_home_bets: bool,
+        allow_draw_bets: bool,
+        home_min_form_goal_diff_delta: float | None,
+        draw_min_edge_pct: float,
+        draw_max_edge_pct: float | None,
+        draw_min_model_probability: float,
+        draw_max_bookmaker_odds: float | None,
+        draw_max_lambda_gap: float | None,
+        draw_max_abs_form_goal_diff_delta: float | None,
         away_min_edge_pct: float | None,
         away_min_model_probability: float | None,
         away_max_bookmaker_odds: float | None,
         allow_away_bets: bool,
     ) -> tuple[str, HistoricalOddSnapshot, float, float] | None:
         candidates: list[tuple[str, HistoricalOddSnapshot, float, float]] = []
+        lambda_gap = abs(probabilities.lambda_home - probabilities.lambda_away)
+        form_delta = probabilities.form_goal_diff_delta
+
         for selection, odds_snapshot in odds_by_selection.items():
+            if selection == "HOME" and not allow_home_bets:
+                continue
+            if selection == "DRAW" and not allow_draw_bets:
+                continue
             if selection == "AWAY" and not allow_away_bets:
                 continue
-            if max_bookmaker_odds is not None and odds_snapshot.odd_value > max_bookmaker_odds:
+            selection_max_odds = max_bookmaker_odds
+            selection_min_probability = min_model_probability
+            selection_min_edge = min_edge_pct
+            selection_max_edge = max_edge_pct
+
+            if selection == "DRAW":
+                selection_max_odds = draw_max_bookmaker_odds
+                selection_min_probability = draw_min_model_probability
+                selection_min_edge = draw_min_edge_pct
+                selection_max_edge = draw_max_edge_pct
+                if draw_max_lambda_gap is not None and lambda_gap > draw_max_lambda_gap:
+                    continue
+                if (
+                    draw_max_abs_form_goal_diff_delta is not None
+                    and abs(form_delta) > draw_max_abs_form_goal_diff_delta
+                ):
+                    continue
+            elif (
+                selection == "HOME"
+                and home_min_form_goal_diff_delta is not None
+                and form_delta < home_min_form_goal_diff_delta
+            ):
+                continue
+
+            if selection_max_odds is not None and odds_snapshot.odd_value > selection_max_odds:
                 continue
 
             model_probability = self._probability_for_selection(probabilities, selection)
-            if model_probability < min_model_probability:
+            if model_probability < selection_min_probability:
                 continue
 
             if selection == "AWAY":
@@ -358,11 +444,11 @@ class HistoricalPoissonBacktester:
                     bookmaker_odds=odds_snapshot.odd_value,
                 )
             )
-            if value_metrics.edge_pct < min_edge_pct:
+            if value_metrics.edge_pct < selection_min_edge:
                 continue
             if selection == "AWAY" and away_min_edge_pct is not None and value_metrics.edge_pct < away_min_edge_pct:
                 continue
-            if max_edge_pct is not None and value_metrics.edge_pct > max_edge_pct:
+            if selection_max_edge is not None and value_metrics.edge_pct > selection_max_edge:
                 continue
 
             candidates.append(
@@ -377,6 +463,33 @@ class HistoricalPoissonBacktester:
         if not candidates:
             return None
         return max(candidates, key=lambda item: item[2])
+
+
+    @staticmethod
+    def _recent_goal_difference(
+        matches: list[Match],
+        team_id: int,
+        *,
+        window_matches: int,
+    ) -> float:
+        team_matches = [
+            match for match in matches
+            if match.home_team_id == team_id or match.away_team_id == team_id
+        ]
+        if not team_matches:
+            return 0.0
+
+        ordered_matches = sorted(
+            team_matches,
+            key=lambda item: (item.match_date, item.id),
+        )[-window_matches:]
+        total = 0.0
+        for match in ordered_matches:
+            if match.home_team_id == team_id:
+                total += float((match.score_home_ft or 0) - (match.score_away_ft or 0))
+            else:
+                total += float((match.score_away_ft or 0) - (match.score_home_ft or 0))
+        return total / len(ordered_matches)
 
     @staticmethod
     def _avg_home_goals_for(

@@ -13,10 +13,19 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class LeagueBettingPolicy:
+    allow_home_bets: bool = True
+    allow_draw_bets: bool = False
     min_edge_pct: float = 5.0
     max_edge_pct: float = 6.0
     min_model_probability: float = 0.55
     max_bookmaker_odds: float = 1.8
+    home_min_form_goal_diff_delta: float | None = None
+    draw_min_edge_pct: float = 4.0
+    draw_max_edge_pct: float | None = 9.0
+    draw_min_model_probability: float = 0.24
+    draw_max_bookmaker_odds: float = 4.2
+    draw_max_lambda_gap: float | None = 0.25
+    draw_max_abs_form_goal_diff_delta: float | None = 0.35
     away_min_edge_pct: float = 99.0
     away_min_model_probability: float = 0.58
     away_max_bookmaker_odds: float = 1.8

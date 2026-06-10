@@ -658,6 +658,72 @@ Resta da migliorare:
 
 ---
 
+## 9F. Feature selection HOME/DRAW e form goal-difference
+
+Intervento implementato:
+
+```text
+- form_goal_diff_delta pre-match calcolato solo da partite precedenti
+- lambda_gap per riconoscere partite potenzialmente equilibrate
+- policy con allow_home_bets / allow_draw_bets / allow_away_bets
+- soglie DRAW dedicate:
+  - draw_min_edge_pct
+  - draw_max_edge_pct
+  - draw_min_model_probability
+  - draw_max_bookmaker_odds
+  - draw_max_lambda_gap
+  - draw_max_abs_form_goal_diff_delta
+- soglia HOME opzionale su home_min_form_goal_diff_delta
+```
+
+Nota ELO storico:
+
+```text
+La tabella team_rating_snapshots e' vuota.
+Non e' stato usato ELO statico per evitare leakage temporale.
+L'integrazione ELO storica resta da fare solo dopo aver popolato rating snapshot per data.
+```
+
+Risultato tuning aggiornato:
+
+```text
+Il grid ha provato candidati DRAW e filtri form-delta.
+Il walk-forward non ha promosso DRAW: nessuna policy DRAW ha battuto stabilmente HOME.
+La policy finale resta HOME-only con AWAY disabilitato.
+```
+
+Nuovi run generati con backtester aggiornato:
+
+```text
+Run IDs      : 210-259
+Prediction   : 38.373
+Bet reali    : 32
+Brier        : 0.2006
+ECE          : 0.0104
+```
+
+Holdout finale 2023/24 dopo le nuove feature:
+
+```text
+Run IDs      : 260-264
+Bet reali    : 6
+Stake        : 60.0
+P&L          : +12.3
+ROI          : +20.5%
+Brier        : 0.2011
+ECE          : 0.0088
+```
+
+Decisione:
+
+```text
+Le feature sono utili come guardrail e sono ora disponibili nel tuning,
+ma non aumentano ancora il volume out-of-sample senza perdere stabilita'.
+Non forzare DRAW finche' non supera il walk-forward.
+```
+
+---
+
 ## 10. Esperimento 1 — Recent form weighting
 
 ### Obiettivo
@@ -895,7 +961,7 @@ wsl -d Ubuntu --cd /home/rigoni_g/Personal/Betting_Intelligence -- .venv/bin/pyt
 Risultato:
 
 ```text
-54 passed
+55 passed
 ```
 
 Nota test aggiornata:
