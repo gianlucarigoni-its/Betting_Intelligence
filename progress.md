@@ -264,6 +264,24 @@ Non sono ancora promossi come betting policy di default: servono reimport quote,
 
 ---
 
+## 4B. Report finale
+
+Report creato:
+
+```text
+reports/phase4b_betting_engine_report.md
+```
+
+Sintesi:
+
+```text
+Il progetto e' piu' forte come ricerca/backtesting engine.
+Non e' ancora provato come betting engine competitivo.
+La prossima prova decisiva e' opening odds + CLV + walk-forward meta-model su 10 stagioni.
+```
+
+---
+
 ## 5. Componenti completati
 
 ### Database e Alembic
