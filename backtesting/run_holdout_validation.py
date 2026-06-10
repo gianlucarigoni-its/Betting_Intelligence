@@ -56,6 +56,7 @@ class ValidationDefaults:
     elo_season_regression: float = 0.15
     elo_lambda_weight: float = 0.0
     selection_meta_model_path: str | None = None
+    odds_snapshot_type: str = "closing"
 
 
 def _filter_catalog(
@@ -123,6 +124,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--elo-season-regression", type=float, default=0.15)
     parser.add_argument("--elo-lambda-weight", type=float, default=0.0)
     parser.add_argument("--selection-meta-model-path")
+    parser.add_argument("--odds-snapshot-type", choices=("opening", "closing"), default="closing")
     parser.add_argument(
         "--policy-file",
         help="JSON con policy di betting per lega, generato dal tuning walk-forward.",
@@ -197,6 +199,7 @@ def _phase_backtest(
                     elo_season_regression=defaults.elo_season_regression,
                     elo_lambda_weight=defaults.elo_lambda_weight,
                     selection_meta_model_path=defaults.selection_meta_model_path,
+                    odds_snapshot_type=defaults.odds_snapshot_type,
                 )
 
                 backtester = HistoricalPoissonBacktester(session)
@@ -240,6 +243,7 @@ def _phase_backtest(
                         elo_season_regression=effective.elo_season_regression,
                         elo_lambda_weight=effective.elo_lambda_weight,
                         selection_meta_model_path=defaults.selection_meta_model_path,
+                        odds_snapshot_type=defaults.odds_snapshot_type,
                     )
                 )
                 LOGGER.info(
@@ -297,6 +301,7 @@ def main() -> None:
         elo_season_regression=args.elo_season_regression,
         elo_lambda_weight=args.elo_lambda_weight,
         selection_meta_model_path=args.selection_meta_model_path,
+        odds_snapshot_type=args.odds_snapshot_type,
     )
     policy_store = LeaguePolicyStore(args.policy_file) if args.policy_file else None
 

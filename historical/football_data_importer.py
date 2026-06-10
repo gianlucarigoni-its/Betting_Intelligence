@@ -156,11 +156,67 @@ class FootballDataImporter:
         snapshot_time: str,
         source_url: str | None,
     ) -> int:
-        odds_map = {
+        opening_map = {
             "HOME": row.get("B365H"),
             "DRAW": row.get("B365D"),
             "AWAY": row.get("B365A"),
         }
+        closing_map = {
+            "HOME": row.get("B365CH"),
+            "DRAW": row.get("B365CD"),
+            "AWAY": row.get("B365CA"),
+        }
+
+        imported = 0
+        has_opening = all(self._has_value(value) for value in opening_map.values())
+        has_closing = all(self._has_value(value) for value in closing_map.values())
+
+        if has_closing:
+            if has_opening:
+                imported += self._import_1x2_snapshot(
+                    match_id=match_id,
+                    bookmaker_id=bookmaker_id,
+                    odds_map=opening_map,
+                    snapshot_time=f"{snapshot_time} opening",
+                    is_opening=True,
+                    is_closing=False,
+                    source_url=source_url,
+                )
+            imported += self._import_1x2_snapshot(
+                match_id=match_id,
+                bookmaker_id=bookmaker_id,
+                odds_map=closing_map,
+                snapshot_time=snapshot_time,
+                is_opening=False,
+                is_closing=True,
+                source_url=source_url,
+            )
+            return imported
+
+        if not has_opening:
+            return 0
+
+        return self._import_1x2_snapshot(
+            match_id=match_id,
+            bookmaker_id=bookmaker_id,
+            odds_map=opening_map,
+            snapshot_time=snapshot_time,
+            is_opening=False,
+            is_closing=True,
+            source_url=source_url,
+        )
+
+    def _import_1x2_snapshot(
+        self,
+        *,
+        match_id: int,
+        bookmaker_id: int,
+        odds_map: dict[str, str | None],
+        snapshot_time: str,
+        is_opening: bool,
+        is_closing: bool,
+        source_url: str | None,
+    ) -> int:
         if any(not self._has_value(value) for value in odds_map.values()):
             return 0
 
@@ -210,8 +266,8 @@ class FootballDataImporter:
                     fair_prob=fair_probs[selection],
                     overround_pct=overround_pct,
                     snapshot_time=snapshot_time,
-                    is_opening=False,
-                    is_closing=True,
+                    is_opening=is_opening,
+                    is_closing=is_closing,
                     source_url=source_url,
                 )
             )

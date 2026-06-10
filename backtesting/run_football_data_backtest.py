@@ -40,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--elo-season-regression", type=float, default=0.15)
     parser.add_argument("--elo-lambda-weight", type=float, default=0.0)
     parser.add_argument("--selection-meta-model-path")
+    parser.add_argument("--odds-snapshot-type", choices=("opening", "closing"), default="closing")
     return parser.parse_args()
 
 
@@ -90,6 +91,7 @@ def main() -> None:
                 elo_season_regression=args.elo_season_regression,
                 elo_lambda_weight=args.elo_lambda_weight,
                 selection_meta_model_path=args.selection_meta_model_path,
+                odds_snapshot_type=args.odds_snapshot_type,
             )
         )
         print(

@@ -69,6 +69,7 @@ class HistoricalPoissonBacktestConfig:
     elo_season_regression: float = 0.15
     elo_lambda_weight: float = 0.0
     selection_meta_model_path: str | None = None
+    odds_snapshot_type: str = "closing"
 
 @dataclass(frozen=True, slots=True)
 class RollingPoissonProbabilities:
@@ -152,7 +153,8 @@ class HistoricalPoissonBacktester:
                     f"elo_season_regression={config.elo_season_regression}; "
                     f"elo_lambda_weight={config.elo_lambda_weight}; "
                     f"selection_meta_model_path="
-                    f"{config.selection_meta_model_path}"
+                    f"{config.selection_meta_model_path}; "
+                    f"odds_snapshot_type={config.odds_snapshot_type}"
                 ),
             )
         )
@@ -168,7 +170,7 @@ class HistoricalPoissonBacktester:
             if probabilities is None:
                 continue
 
-            odds_by_selection = self._load_closing_odds(match.id)
+            odds_by_selection = self._load_odds(match.id, config.odds_snapshot_type)
             if len(odds_by_selection) < 3:
                 continue
 
@@ -579,17 +581,27 @@ class HistoricalPoissonBacktester:
         )
         return calculator.build_pre_match_ratings(matches)
 
-    def _load_closing_odds(self, match_id: int) -> dict[str, HistoricalOddSnapshot]:
-        odds = (
-            self._session.query(HistoricalOddSnapshot)
-            .filter(
-                HistoricalOddSnapshot.match_id == match_id,
-                HistoricalOddSnapshot.market_type == "1X2",
-                HistoricalOddSnapshot.is_closing.is_(True),
-            )
-            .all()
+    def _load_odds(
+        self,
+        match_id: int,
+        snapshot_type: str,
+    ) -> dict[str, HistoricalOddSnapshot]:
+        if snapshot_type not in {"opening", "closing"}:
+            raise ValueError("odds_snapshot_type must be 'opening' or 'closing'")
+
+        query = self._session.query(HistoricalOddSnapshot).filter(
+            HistoricalOddSnapshot.match_id == match_id,
+            HistoricalOddSnapshot.market_type == "1X2",
         )
-        return {item.selection: item for item in odds}
+        if snapshot_type == "opening":
+            query = query.filter(HistoricalOddSnapshot.is_opening.is_(True))
+        else:
+            query = query.filter(HistoricalOddSnapshot.is_closing.is_(True))
+
+        return {item.selection: item for item in query.all()}
+
+    def _load_closing_odds(self, match_id: int) -> dict[str, HistoricalOddSnapshot]:
+        return self._load_odds(match_id, "closing")
 
     def _select_best_value_candidate(
         self,

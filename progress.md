@@ -203,6 +203,40 @@ AWAY resta disabilitato di default e puo' riaprire solo con policy dedicata e te
 
 ---
 
+## 4B. Step 3 chiuso
+
+Implementato e verificato:
+
+```text
+- Importer Football-Data aggiornato per separare opening odds e closing odds Bet365 quando B365CH/B365CD/B365CA sono disponibili.
+- Backtester configurabile con odds_snapshot_type = opening | closing.
+- Report di stabilita' con ROI, hit rate, drawdown massimo e CLV medio.
+- CLI: backtesting.run_stability_report.
+```
+
+Comandi utili:
+
+```bash
+python -m backtesting.run_calibration --odds-snapshot-type opening
+python -m backtesting.run_calibration --odds-snapshot-type closing
+python -m backtesting.run_stability_report --runs 205-259 --min-bets 5
+```
+
+Stato test:
+
+```text
+68 passed
+```
+
+Decisione:
+
+```text
+Il codice ora consente di misurare se il segnale batte il closing price.
+I dati storici esistenti vanno reimportati per popolare opening odds quando la sorgente CSV contiene le colonne B365C*.
+```
+
+---
+
 ## 5. Componenti completati
 
 ### Database e Alembic
