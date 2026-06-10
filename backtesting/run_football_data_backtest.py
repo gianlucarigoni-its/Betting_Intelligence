@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--elo-home-advantage", type=float, default=65.0)
     parser.add_argument("--elo-season-regression", type=float, default=0.15)
     parser.add_argument("--elo-lambda-weight", type=float, default=0.0)
+    parser.add_argument("--selection-meta-model-path")
     return parser.parse_args()
 
 
@@ -88,6 +89,7 @@ def main() -> None:
                 elo_home_advantage=args.elo_home_advantage,
                 elo_season_regression=args.elo_season_regression,
                 elo_lambda_weight=args.elo_lambda_weight,
+                selection_meta_model_path=args.selection_meta_model_path,
             )
         )
         print(

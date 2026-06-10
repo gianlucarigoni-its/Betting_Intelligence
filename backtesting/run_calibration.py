@@ -76,6 +76,7 @@ class BacktestDefaults:
     elo_home_advantage: float = 65.0
     elo_season_regression: float = 0.15
     elo_lambda_weight: float = 0.0
+    selection_meta_model_path: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +208,7 @@ def _phase_backtest(
                     elo_home_advantage=defaults.elo_home_advantage,
                     elo_season_regression=defaults.elo_season_regression,
                     elo_lambda_weight=defaults.elo_lambda_weight,
+                    selection_meta_model_path=defaults.selection_meta_model_path,
                 )
 
                 try:
@@ -255,6 +257,7 @@ def _phase_backtest(
                             elo_home_advantage=effective.elo_home_advantage,
                             elo_season_regression=effective.elo_season_regression,
                             elo_lambda_weight=effective.elo_lambda_weight,
+                            selection_meta_model_path=defaults.selection_meta_model_path,
                         )
                     )
                     LOGGER.info(
@@ -376,6 +379,10 @@ def _parse_args() -> argparse.Namespace:
         default=0.0,
         help="Peso del correttore ELO sui lambda. 0.0 mantiene il Poisson base.",
     )
+    parser.add_argument(
+        "--selection-meta-model-path",
+        help="File pickle del meta-model di selezione da applicare come gate.",
+    )
 
     return parser.parse_args()
 
@@ -421,6 +428,7 @@ def main() -> None:
         elo_home_advantage=args.elo_home_advantage,
         elo_season_regression=args.elo_season_regression,
         elo_lambda_weight=args.elo_lambda_weight,
+        selection_meta_model_path=args.selection_meta_model_path,
     )
     policy_store = LeaguePolicyStore(args.policy_file) if args.policy_file else None
 

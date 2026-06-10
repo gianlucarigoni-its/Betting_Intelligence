@@ -174,6 +174,35 @@ Il peso ELO resta 0.0 di default finche' non viene validato da walk-forward.
 
 ---
 
+## 4B. Step 2 chiuso
+
+Implementato e verificato:
+
+```text
+- Meta-model leggero di selezione basato su logistic regression.
+- Feature del meta-model: selection, edge, odds, model probability, bookmaker probability, lega, lambda_home/lambda_away e distanza modello-mercato.
+- Training CLI: backtesting.run_selection_meta_training.
+- Gate opzionale nel backtester tramite --selection-meta-model-path.
+- Policy di selezione rese esplicite per HOME, DRAW e AWAY nella logica del backtester.
+- Holdout validation corretta per applicare davvero le policy HOME/DRAW/AWAY.
+```
+
+Stato test:
+
+```text
+64 passed
+```
+
+Decisione:
+
+```text
+Il meta-model e' disponibile ma non e' promosso come default.
+Va addestrato su stagioni precedenti e validato walk-forward prima di usarlo in policy stabile.
+AWAY resta disabilitato di default e puo' riaprire solo con policy dedicata e testata.
+```
+
+---
+
 ## 5. Componenti completati
 
 ### Database e Alembic

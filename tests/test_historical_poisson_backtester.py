@@ -258,3 +258,49 @@ def test_elo_weight_moves_lambdas_in_rating_direction() -> None:
     assert weighted.lambda_home > base.lambda_home
     assert weighted.lambda_away < base.lambda_away
     assert weighted.elo_diff == 300.0
+
+
+def test_meta_model_can_gate_otherwise_valid_home_candidate() -> None:
+    session = build_session()
+    backtester = HistoricalPoissonBacktester(session)
+    selector = backtester._select_best_value_candidate  # type: ignore[attr-defined]
+
+    class RejectHomeModel:
+        def predict_probability_for_features(self, features):
+            return 0.40 if features["selection"] == "HOME" else 0.0
+
+    fake_probabilities = SimpleNamespace(
+        home=0.615, draw=0.18, away=0.20,
+        lambda_home=1.4, lambda_away=1.0, form_goal_diff_delta=0.1,
+    )
+    odds_by_selection = {
+        "HOME": SimpleNamespace(selection="HOME", odd_value=1.80, bookmaker_id=1, fair_prob=0.54, implied_prob=0.56),
+        "DRAW": SimpleNamespace(selection="DRAW", odd_value=3.50, bookmaker_id=2, fair_prob=0.27, implied_prob=0.29),
+        "AWAY": SimpleNamespace(selection="AWAY", odd_value=1.70, bookmaker_id=3, fair_prob=0.19, implied_prob=0.59),
+    }
+
+    candidate = selector(
+        probabilities=fake_probabilities,
+        odds_by_selection=odds_by_selection,
+        min_edge_pct=5.0,
+        max_edge_pct=8.0,
+        min_model_probability=0.55,
+        max_bookmaker_odds=1.8,
+        allow_home_bets=True,
+        allow_draw_bets=False,
+        home_min_form_goal_diff_delta=None,
+        draw_min_edge_pct=4.0,
+        draw_max_edge_pct=9.0,
+        draw_min_model_probability=0.24,
+        draw_max_bookmaker_odds=4.2,
+        draw_max_lambda_gap=0.25,
+        draw_max_abs_form_goal_diff_delta=0.35,
+        away_min_edge_pct=99.0,
+        away_min_model_probability=0.58,
+        away_max_bookmaker_odds=1.8,
+        allow_away_bets=False,
+        league_name="Test League",
+        selection_meta_model=RejectHomeModel(),
+    )
+
+    assert candidate is None

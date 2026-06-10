@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from pathlib import Path
 
 from scipy.stats import poisson
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ from backtesting.persistence_service import (
     BacktestRunInput,
 )
 from database.models import BacktestRun, Competition, HistoricalOddSnapshot, Match
+from backtesting.selection_meta_model import SelectionMetaModel
 from models.form_features import build_match_form_features
 from models.historical_elo import (
     HistoricalEloCalculator,
@@ -66,6 +68,7 @@ class HistoricalPoissonBacktestConfig:
     elo_home_advantage: float = 65.0
     elo_season_regression: float = 0.15
     elo_lambda_weight: float = 0.0
+    selection_meta_model_path: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class RollingPoissonProbabilities:
@@ -98,6 +101,12 @@ class HistoricalPoissonBacktester:
 
     def run(self, config: HistoricalPoissonBacktestConfig) -> BacktestRun:
         """Create and execute a backtest run."""
+
+        competition = self._session.get(Competition, config.competition_id)
+        if competition is None:
+            raise ValueError(f"Competition id={config.competition_id} not found")
+
+        selection_meta_model = self._load_selection_meta_model(config.selection_meta_model_path)
 
         run = self._persistence.create_run(
             BacktestRunInput(
@@ -141,7 +150,9 @@ class HistoricalPoissonBacktester:
                     f"elo_k_factor={config.elo_k_factor}; "
                     f"elo_home_advantage={config.elo_home_advantage}; "
                     f"elo_season_regression={config.elo_season_regression}; "
-                    f"elo_lambda_weight={config.elo_lambda_weight}"
+                    f"elo_lambda_weight={config.elo_lambda_weight}; "
+                    f"selection_meta_model_path="
+                    f"{config.selection_meta_model_path}"
                 ),
             )
         )
@@ -185,6 +196,8 @@ class HistoricalPoissonBacktester:
                 away_min_model_probability=config.away_min_model_probability,
                 away_max_bookmaker_odds=config.away_max_bookmaker_odds,
                 allow_away_bets=config.allow_away_bets,
+                league_name=competition.name,
+                selection_meta_model=selection_meta_model,
             )
             bet_selection: str | None = candidate[0] if candidate is not None else None
             bankroll_before = run.initial_bankroll + run.profit_loss
@@ -202,6 +215,12 @@ class HistoricalPoissonBacktester:
                 )
                 is_this_bet = (sel == bet_selection) and not bankroll_exhausted
                 stake = min(config.flat_stake, bankroll_before) if is_this_bet else 0.0
+                meta_probability = candidate[4] if candidate is not None else None
+                meta_reason = (
+                    f"meta_probability={meta_probability:.3f}; "
+                    if meta_probability is not None
+                    else ""
+                )
 
                 record = self._persistence.record_bet(
                     BacktestBetInput(
@@ -227,6 +246,7 @@ class HistoricalPoissonBacktester:
                         placed_at=odds_snapshot.snapshot_time,
                         reason=(
                             f"lambda_home={probabilities.lambda_home:.3f}; "
+                            f"{meta_reason}"
                             f"lambda_away={probabilities.lambda_away:.3f}; "
                             f"form_gd_delta="
                             f"{probabilities.form_goal_diff_delta:.3f}; "
@@ -419,6 +439,114 @@ class HistoricalPoissonBacktester:
             elo_diff=effective_elo.elo_diff,
         )
 
+    @staticmethod
+    def _load_selection_meta_model(path: str | None) -> SelectionMetaModel | None:
+        if path is None:
+            return None
+        model_path = Path(path)
+        if not model_path.exists():
+            raise ValueError(f"Selection meta-model not found: {path}")
+        return SelectionMetaModel.load(model_path)
+
+    @staticmethod
+    def _selection_policy_for(
+        selection: str,
+        *,
+        min_edge_pct: float,
+        max_edge_pct: float | None,
+        min_model_probability: float,
+        max_bookmaker_odds: float | None,
+        allow_home_bets: bool,
+        allow_draw_bets: bool,
+        home_min_form_goal_diff_delta: float | None,
+        draw_min_edge_pct: float,
+        draw_max_edge_pct: float | None,
+        draw_min_model_probability: float,
+        draw_max_bookmaker_odds: float | None,
+        draw_max_lambda_gap: float | None,
+        draw_max_abs_form_goal_diff_delta: float | None,
+        away_min_edge_pct: float | None,
+        away_min_model_probability: float | None,
+        away_max_bookmaker_odds: float | None,
+        allow_away_bets: bool,
+    ) -> dict[str, float | bool | None]:
+        if selection == "HOME":
+            return {
+                "enabled": allow_home_bets,
+                "min_edge_pct": min_edge_pct,
+                "max_edge_pct": max_edge_pct,
+                "min_model_probability": min_model_probability,
+                "max_odds": max_bookmaker_odds,
+                "min_form_goal_diff_delta": home_min_form_goal_diff_delta,
+                "max_lambda_gap": None,
+                "max_abs_form_goal_diff_delta": None,
+                "min_model_probability_override": None,
+                "max_odds_override": None,
+            }
+        if selection == "DRAW":
+            return {
+                "enabled": allow_draw_bets,
+                "min_edge_pct": draw_min_edge_pct,
+                "max_edge_pct": draw_max_edge_pct,
+                "min_model_probability": draw_min_model_probability,
+                "max_odds": draw_max_bookmaker_odds,
+                "min_form_goal_diff_delta": None,
+                "max_lambda_gap": draw_max_lambda_gap,
+                "max_abs_form_goal_diff_delta": draw_max_abs_form_goal_diff_delta,
+                "min_model_probability_override": None,
+                "max_odds_override": None,
+            }
+        return {
+            "enabled": allow_away_bets,
+            "min_edge_pct": away_min_edge_pct if away_min_edge_pct is not None else min_edge_pct,
+            "max_edge_pct": None,
+            "min_model_probability": away_min_model_probability if away_min_model_probability is not None else min_model_probability,
+            "max_odds": away_max_bookmaker_odds if away_max_bookmaker_odds is not None else max_bookmaker_odds,
+            "min_form_goal_diff_delta": None,
+            "max_lambda_gap": None,
+            "max_abs_form_goal_diff_delta": None,
+            "min_model_probability_override": away_min_model_probability,
+            "max_odds_override": away_max_bookmaker_odds,
+        }
+
+    @staticmethod
+    def _selection_meta_threshold(selection: str) -> float:
+        if selection == "DRAW":
+            return 0.52
+        if selection == "AWAY":
+            return 0.58
+        return 0.55
+
+    @staticmethod
+    def _selection_meta_probability(
+        *,
+        selection_meta_model: SelectionMetaModel,
+        selection: str,
+        league_name: str,
+        probabilities: RollingPoissonProbabilities,
+        odds_snapshot: HistoricalOddSnapshot,
+        model_probability: float,
+    ) -> float:
+        bookmaker_probability = (
+            odds_snapshot.fair_prob
+            if odds_snapshot.fair_prob is not None
+            else odds_snapshot.implied_prob
+        )
+        return selection_meta_model.predict_probability_for_features(
+            {
+                "selection": selection,
+                "league": league_name,
+                "edge_pct": (model_probability - bookmaker_probability) * 100.0,
+                "bookmaker_odds": odds_snapshot.odd_value,
+                "model_probability": model_probability,
+                "bookmaker_probability": bookmaker_probability,
+                "model_market_distance": abs(model_probability - bookmaker_probability),
+                "lambda_home": probabilities.lambda_home,
+                "lambda_away": probabilities.lambda_away,
+                "lambda_gap": abs(probabilities.lambda_home - probabilities.lambda_away),
+            }
+        )
+
     def _load_historical_elo_ratings(
         self,
         config: HistoricalPoissonBacktestConfig,
@@ -485,53 +613,56 @@ class HistoricalPoissonBacktester:
         away_min_model_probability: float | None,
         away_max_bookmaker_odds: float | None,
         allow_away_bets: bool,
-    ) -> tuple[str, HistoricalOddSnapshot, float, float] | None:
-        candidates: list[tuple[str, HistoricalOddSnapshot, float, float]] = []
+        league_name: str = "unknown",
+        selection_meta_model: SelectionMetaModel | None = None,
+    ) -> tuple[str, HistoricalOddSnapshot, float, float, float] | None:
+        candidates: list[tuple[str, HistoricalOddSnapshot, float, float, float]] = []
         lambda_gap = abs(probabilities.lambda_home - probabilities.lambda_away)
         form_delta = probabilities.form_goal_diff_delta
 
         for selection, odds_snapshot in odds_by_selection.items():
-            if selection == "HOME" and not allow_home_bets:
+            policy = self._selection_policy_for(
+                selection,
+                min_edge_pct=min_edge_pct,
+                max_edge_pct=max_edge_pct,
+                min_model_probability=min_model_probability,
+                max_bookmaker_odds=max_bookmaker_odds,
+                allow_home_bets=allow_home_bets,
+                allow_draw_bets=allow_draw_bets,
+                home_min_form_goal_diff_delta=home_min_form_goal_diff_delta,
+                draw_min_edge_pct=draw_min_edge_pct,
+                draw_max_edge_pct=draw_max_edge_pct,
+                draw_min_model_probability=draw_min_model_probability,
+                draw_max_bookmaker_odds=draw_max_bookmaker_odds,
+                draw_max_lambda_gap=draw_max_lambda_gap,
+                draw_max_abs_form_goal_diff_delta=draw_max_abs_form_goal_diff_delta,
+                away_min_edge_pct=away_min_edge_pct,
+                away_min_model_probability=away_min_model_probability,
+                away_max_bookmaker_odds=away_max_bookmaker_odds,
+                allow_away_bets=allow_away_bets,
+            )
+            if not policy["enabled"]:
                 continue
-            if selection == "DRAW" and not allow_draw_bets:
-                continue
-            if selection == "AWAY" and not allow_away_bets:
-                continue
-            selection_max_odds = max_bookmaker_odds
-            selection_min_probability = min_model_probability
-            selection_min_edge = min_edge_pct
-            selection_max_edge = max_edge_pct
-
-            if selection == "DRAW":
-                selection_max_odds = draw_max_bookmaker_odds
-                selection_min_probability = draw_min_model_probability
-                selection_min_edge = draw_min_edge_pct
-                selection_max_edge = draw_max_edge_pct
-                if draw_max_lambda_gap is not None and lambda_gap > draw_max_lambda_gap:
-                    continue
-                if (
-                    draw_max_abs_form_goal_diff_delta is not None
-                    and abs(form_delta) > draw_max_abs_form_goal_diff_delta
-                ):
-                    continue
-            elif (
-                selection == "HOME"
-                and home_min_form_goal_diff_delta is not None
-                and form_delta < home_min_form_goal_diff_delta
-            ):
-                continue
-
-            if selection_max_odds is not None and odds_snapshot.odd_value > selection_max_odds:
+            if policy["max_odds"] is not None and odds_snapshot.odd_value > policy["max_odds"]:
                 continue
 
             model_probability = self._probability_for_selection(probabilities, selection)
-            if model_probability < selection_min_probability:
+            if model_probability < policy["min_model_probability"]:
                 continue
 
-            if selection == "AWAY":
-                if away_min_model_probability is not None and model_probability < away_min_model_probability:
+            if selection == "DRAW":
+                if policy["max_lambda_gap"] is not None and lambda_gap > policy["max_lambda_gap"]:
                     continue
-                if away_max_bookmaker_odds is not None and odds_snapshot.odd_value > away_max_bookmaker_odds:
+                if policy["max_abs_form_goal_diff_delta"] is not None and abs(form_delta) > policy["max_abs_form_goal_diff_delta"]:
+                    continue
+            elif selection == "HOME" and policy["min_form_goal_diff_delta"] is not None:
+                if form_delta < policy["min_form_goal_diff_delta"]:
+                    continue
+
+            if selection == "AWAY":
+                if policy["min_model_probability_override"] is not None and model_probability < policy["min_model_probability_override"]:
+                    continue
+                if policy["max_odds_override"] is not None and odds_snapshot.odd_value > policy["max_odds_override"]:
                     continue
 
             value_metrics = self._value_calculator.calculate(
@@ -540,12 +671,23 @@ class HistoricalPoissonBacktester:
                     bookmaker_odds=odds_snapshot.odd_value,
                 )
             )
-            if value_metrics.edge_pct < selection_min_edge:
+            if value_metrics.edge_pct < policy["min_edge_pct"]:
                 continue
-            if selection == "AWAY" and away_min_edge_pct is not None and value_metrics.edge_pct < away_min_edge_pct:
+            if policy["max_edge_pct"] is not None and value_metrics.edge_pct > policy["max_edge_pct"]:
                 continue
-            if selection_max_edge is not None and value_metrics.edge_pct > selection_max_edge:
-                continue
+
+            meta_probability = 1.0
+            if selection_meta_model is not None:
+                meta_probability = self._selection_meta_probability(
+                    selection_meta_model=selection_meta_model,
+                    selection=selection,
+                    league_name=league_name,
+                    probabilities=probabilities,
+                    odds_snapshot=odds_snapshot,
+                    model_probability=model_probability,
+                )
+                if meta_probability < self._selection_meta_threshold(selection):
+                    continue
 
             candidates.append(
                 (
@@ -553,12 +695,15 @@ class HistoricalPoissonBacktester:
                     odds_snapshot,
                     value_metrics.edge_pct,
                     value_metrics.ev,
+                    meta_probability,
                 )
             )
 
         if not candidates:
             return None
-        return max(candidates, key=lambda item: item[2])
+        if selection_meta_model is None:
+            return max(candidates, key=lambda item: item[2])
+        return max(candidates, key=lambda item: (item[4], item[2]))
 
 
     @staticmethod

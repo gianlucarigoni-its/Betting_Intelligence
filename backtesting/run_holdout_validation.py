@@ -55,6 +55,7 @@ class ValidationDefaults:
     elo_home_advantage: float = 65.0
     elo_season_regression: float = 0.15
     elo_lambda_weight: float = 0.0
+    selection_meta_model_path: str | None = None
 
 
 def _filter_catalog(
@@ -121,6 +122,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--elo-home-advantage", type=float, default=65.0)
     parser.add_argument("--elo-season-regression", type=float, default=0.15)
     parser.add_argument("--elo-lambda-weight", type=float, default=0.0)
+    parser.add_argument("--selection-meta-model-path")
     parser.add_argument(
         "--policy-file",
         help="JSON con policy di betting per lega, generato dal tuning walk-forward.",
@@ -194,6 +196,7 @@ def _phase_backtest(
                     elo_home_advantage=defaults.elo_home_advantage,
                     elo_season_regression=defaults.elo_season_regression,
                     elo_lambda_weight=defaults.elo_lambda_weight,
+                    selection_meta_model_path=defaults.selection_meta_model_path,
                 )
 
                 backtester = HistoricalPoissonBacktester(session)
@@ -236,6 +239,7 @@ def _phase_backtest(
                         elo_home_advantage=effective.elo_home_advantage,
                         elo_season_regression=effective.elo_season_regression,
                         elo_lambda_weight=effective.elo_lambda_weight,
+                        selection_meta_model_path=defaults.selection_meta_model_path,
                     )
                 )
                 LOGGER.info(
@@ -292,6 +296,7 @@ def main() -> None:
         elo_home_advantage=args.elo_home_advantage,
         elo_season_regression=args.elo_season_regression,
         elo_lambda_weight=args.elo_lambda_weight,
+        selection_meta_model_path=args.selection_meta_model_path,
     )
     policy_store = LeaguePolicyStore(args.policy_file) if args.policy_file else None
 
