@@ -71,6 +71,11 @@ class BacktestDefaults:
     recent_form_half_life_matches: float = 0.0
     home_lambda_multiplier: float = 1.0
     away_lambda_multiplier: float = 1.0
+    elo_initial_rating: float = 1500.0
+    elo_k_factor: float = 24.0
+    elo_home_advantage: float = 65.0
+    elo_season_regression: float = 0.15
+    elo_lambda_weight: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +202,11 @@ def _phase_backtest(
                     recent_form_half_life_matches=defaults.recent_form_half_life_matches,
                     home_lambda_multiplier=defaults.home_lambda_multiplier,
                     away_lambda_multiplier=defaults.away_lambda_multiplier,
+                    elo_initial_rating=defaults.elo_initial_rating,
+                    elo_k_factor=defaults.elo_k_factor,
+                    elo_home_advantage=defaults.elo_home_advantage,
+                    elo_season_regression=defaults.elo_season_regression,
+                    elo_lambda_weight=defaults.elo_lambda_weight,
                 )
 
                 try:
@@ -240,6 +250,11 @@ def _phase_backtest(
                             recent_form_half_life_matches=effective.recent_form_half_life_matches,
                             home_lambda_multiplier=effective.home_lambda_multiplier,
                             away_lambda_multiplier=effective.away_lambda_multiplier,
+                            elo_initial_rating=effective.elo_initial_rating,
+                            elo_k_factor=effective.elo_k_factor,
+                            elo_home_advantage=effective.elo_home_advantage,
+                            elo_season_regression=effective.elo_season_regression,
+                            elo_lambda_weight=effective.elo_lambda_weight,
                         )
                     )
                     LOGGER.info(
@@ -351,6 +366,16 @@ def _parse_args() -> argparse.Namespace:
         default=1.0,
         help="Moltiplicatore sperimentale per lambda_away.",
     )
+    parser.add_argument("--elo-initial-rating", type=float, default=1500.0)
+    parser.add_argument("--elo-k-factor", type=float, default=24.0)
+    parser.add_argument("--elo-home-advantage", type=float, default=65.0)
+    parser.add_argument("--elo-season-regression", type=float, default=0.15)
+    parser.add_argument(
+        "--elo-lambda-weight",
+        type=float,
+        default=0.0,
+        help="Peso del correttore ELO sui lambda. 0.0 mantiene il Poisson base.",
+    )
 
     return parser.parse_args()
 
@@ -391,6 +416,11 @@ def main() -> None:
         recent_form_half_life_matches=args.recent_form_half_life_matches,
         home_lambda_multiplier=args.home_lambda_multiplier,
         away_lambda_multiplier=args.away_lambda_multiplier,
+        elo_initial_rating=args.elo_initial_rating,
+        elo_k_factor=args.elo_k_factor,
+        elo_home_advantage=args.elo_home_advantage,
+        elo_season_regression=args.elo_season_regression,
+        elo_lambda_weight=args.elo_lambda_weight,
     )
     policy_store = LeaguePolicyStore(args.policy_file) if args.policy_file else None
 

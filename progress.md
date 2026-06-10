@@ -147,6 +147,33 @@ source .venv/bin/activate
 
 ---
 
+## 4B. Step 1 chiuso
+
+Implementato e verificato:
+
+```text
+- ELO storico pre-match ricostruito in ordine temporale.
+- Feature di forma robuste su finestre 5/10 con punti, goal difference, clean sheet e trend concessi.
+- Correttore lambda guidato da ELO, configurabile ma disattivato di default.
+- Runner calibration/holdout aggiornati per esporre i nuovi parametri.
+- Test dedicati aggiunti per ELO, forma e integrazione backtester.
+```
+
+Stato test:
+
+```text
+61 passed
+```
+
+Decisione:
+
+```text
+La base probabilistica e' stata estesa senza alterare il Poisson base.
+Il peso ELO resta 0.0 di default finche' non viene validato da walk-forward.
+```
+
+---
+
 ## 5. Componenti completati
 
 ### Database e Alembic

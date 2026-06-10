@@ -34,6 +34,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-bookmaker-odds", type=float, default=2.0)
     parser.add_argument("--min-prior-matches", type=int, default=5)
     parser.add_argument("--shrinkage-matches", type=int, default=10)
+    parser.add_argument("--elo-initial-rating", type=float, default=1500.0)
+    parser.add_argument("--elo-k-factor", type=float, default=24.0)
+    parser.add_argument("--elo-home-advantage", type=float, default=65.0)
+    parser.add_argument("--elo-season-regression", type=float, default=0.15)
+    parser.add_argument("--elo-lambda-weight", type=float, default=0.0)
     return parser.parse_args()
 
 
@@ -78,6 +83,11 @@ def main() -> None:
                 max_bookmaker_odds=args.max_bookmaker_odds,
                 min_prior_matches=args.min_prior_matches,
                 shrinkage_matches=args.shrinkage_matches,
+                elo_initial_rating=args.elo_initial_rating,
+                elo_k_factor=args.elo_k_factor,
+                elo_home_advantage=args.elo_home_advantage,
+                elo_season_regression=args.elo_season_regression,
+                elo_lambda_weight=args.elo_lambda_weight,
             )
         )
         print(

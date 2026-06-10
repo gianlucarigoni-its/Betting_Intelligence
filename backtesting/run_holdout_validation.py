@@ -50,6 +50,11 @@ class ValidationDefaults:
     recent_form_half_life_matches: float = 0.0
     home_lambda_multiplier: float = 1.0
     away_lambda_multiplier: float = 1.0
+    elo_initial_rating: float = 1500.0
+    elo_k_factor: float = 24.0
+    elo_home_advantage: float = 65.0
+    elo_season_regression: float = 0.15
+    elo_lambda_weight: float = 0.0
 
 
 def _filter_catalog(
@@ -111,6 +116,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--home-lambda-multiplier", type=float, default=1.0)
     parser.add_argument("--away-lambda-multiplier", type=float, default=1.0)
+    parser.add_argument("--elo-initial-rating", type=float, default=1500.0)
+    parser.add_argument("--elo-k-factor", type=float, default=24.0)
+    parser.add_argument("--elo-home-advantage", type=float, default=65.0)
+    parser.add_argument("--elo-season-regression", type=float, default=0.15)
+    parser.add_argument("--elo-lambda-weight", type=float, default=0.0)
     parser.add_argument(
         "--policy-file",
         help="JSON con policy di betting per lega, generato dal tuning walk-forward.",
@@ -179,6 +189,11 @@ def _phase_backtest(
                     recent_form_half_life_matches=defaults.recent_form_half_life_matches,
                     home_lambda_multiplier=defaults.home_lambda_multiplier,
                     away_lambda_multiplier=defaults.away_lambda_multiplier,
+                    elo_initial_rating=defaults.elo_initial_rating,
+                    elo_k_factor=defaults.elo_k_factor,
+                    elo_home_advantage=defaults.elo_home_advantage,
+                    elo_season_regression=defaults.elo_season_regression,
+                    elo_lambda_weight=defaults.elo_lambda_weight,
                 )
 
                 backtester = HistoricalPoissonBacktester(session)
@@ -190,10 +205,23 @@ def _phase_backtest(
                         test_end_date=test_end,
                         initial_bankroll=defaults.initial_bankroll,
                         flat_stake=defaults.flat_stake,
+                        allow_home_bets=effective.allow_home_bets,
+                        allow_draw_bets=effective.allow_draw_bets,
                         min_edge_pct=effective.min_edge_pct,
                         max_edge_pct=effective.max_edge_pct,
                         min_model_probability=effective.min_model_probability,
                         max_bookmaker_odds=effective.max_bookmaker_odds,
+                        home_min_form_goal_diff_delta=(
+                            effective.home_min_form_goal_diff_delta
+                        ),
+                        draw_min_edge_pct=effective.draw_min_edge_pct,
+                        draw_max_edge_pct=effective.draw_max_edge_pct,
+                        draw_min_model_probability=effective.draw_min_model_probability,
+                        draw_max_bookmaker_odds=effective.draw_max_bookmaker_odds,
+                        draw_max_lambda_gap=effective.draw_max_lambda_gap,
+                        draw_max_abs_form_goal_diff_delta=(
+                            effective.draw_max_abs_form_goal_diff_delta
+                        ),
                         away_min_edge_pct=effective.away_min_edge_pct,
                         away_min_model_probability=effective.away_min_model_probability,
                         away_max_bookmaker_odds=effective.away_max_bookmaker_odds,
@@ -203,6 +231,11 @@ def _phase_backtest(
                         recent_form_half_life_matches=effective.recent_form_half_life_matches,
                         home_lambda_multiplier=effective.home_lambda_multiplier,
                         away_lambda_multiplier=effective.away_lambda_multiplier,
+                        elo_initial_rating=effective.elo_initial_rating,
+                        elo_k_factor=effective.elo_k_factor,
+                        elo_home_advantage=effective.elo_home_advantage,
+                        elo_season_regression=effective.elo_season_regression,
+                        elo_lambda_weight=effective.elo_lambda_weight,
                     )
                 )
                 LOGGER.info(
@@ -254,6 +287,11 @@ def main() -> None:
         recent_form_half_life_matches=args.recent_form_half_life_matches,
         home_lambda_multiplier=args.home_lambda_multiplier,
         away_lambda_multiplier=args.away_lambda_multiplier,
+        elo_initial_rating=args.elo_initial_rating,
+        elo_k_factor=args.elo_k_factor,
+        elo_home_advantage=args.elo_home_advantage,
+        elo_season_regression=args.elo_season_regression,
+        elo_lambda_weight=args.elo_lambda_weight,
     )
     policy_store = LeaguePolicyStore(args.policy_file) if args.policy_file else None
 

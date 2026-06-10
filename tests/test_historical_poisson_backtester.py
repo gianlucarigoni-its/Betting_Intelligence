@@ -12,7 +12,8 @@ from backtesting.historical_poisson_backtester import (
     HistoricalPoissonBacktester,
 )
 from database.base import Base
-from database.models import BacktestBet, Competition
+from database.models import BacktestBet, Competition, Match
+from models.historical_elo import PreMatchEloRating
 from historical.football_data_importer import FootballDataImportConfig, FootballDataImporter
 
 
@@ -194,3 +195,66 @@ def test_historical_poisson_backtester_can_select_draw_when_balanced() -> None:
 
     assert candidate is not None
     assert candidate[0] == "DRAW"
+
+
+def test_elo_weight_moves_lambdas_in_rating_direction() -> None:
+    session = build_session()
+    importer = FootballDataImporter(session)
+    config = FootballDataImportConfig(
+        season_code="2324",
+        division_code="T1",
+        competition_name="Test League",
+        country="England",
+        season_label="2023/2024",
+    )
+    csv_text = (
+        "Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,B365H,B365D,B365A\n"
+        "T1,01/08/2023,Alpha,Beta,2,0,H,1.80,3.60,4.50\n"
+        "T1,02/08/2023,Beta,Alpha,0,2,A,4.50,3.60,1.80\n"
+        "T1,03/08/2023,Alpha,Gamma,3,1,H,1.80,3.60,4.50\n"
+        "T1,04/08/2023,Gamma,Alpha,1,2,A,4.50,3.60,1.80\n"
+        "T1,05/08/2023,Beta,Gamma,1,1,D,2.60,3.20,2.70\n"
+        "T1,06/08/2023,Gamma,Beta,1,0,H,2.60,3.20,2.70\n"
+        "T1,07/08/2023,Alpha,Beta,2,1,H,1.80,3.60,4.50\n"
+    )
+    importer.import_from_csv_text(config=config, csv_text=csv_text)
+    competition = session.query(Competition).filter(Competition.name == "Test League").one()
+    target = (
+        session.query(Match)
+        .filter(Match.competition_id == competition.id)
+        .order_by(Match.match_date.desc())
+        .first()
+    )
+    assert target is not None
+    backtester = HistoricalPoissonBacktester(session)
+    base_config = HistoricalPoissonBacktestConfig(
+        competition_id=competition.id,
+        name="elo base",
+        min_prior_matches=2,
+        elo_lambda_weight=0.0,
+    )
+    weighted_config = HistoricalPoissonBacktestConfig(
+        competition_id=competition.id,
+        name="elo weighted",
+        min_prior_matches=2,
+        elo_lambda_weight=0.25,
+    )
+    strong_home = PreMatchEloRating(
+        home_rating=1700.0,
+        away_rating=1400.0,
+        elo_diff=300.0,
+        expected_home_score=0.85,
+    )
+
+    base = backtester._estimate_probabilities(  # type: ignore[attr-defined]
+        target, base_config, elo_rating=strong_home
+    )
+    weighted = backtester._estimate_probabilities(  # type: ignore[attr-defined]
+        target, weighted_config, elo_rating=strong_home
+    )
+
+    assert base is not None
+    assert weighted is not None
+    assert weighted.lambda_home > base.lambda_home
+    assert weighted.lambda_away < base.lambda_away
+    assert weighted.elo_diff == 300.0

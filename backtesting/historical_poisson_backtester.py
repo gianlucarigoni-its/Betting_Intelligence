@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 from scipy.stats import poisson
 from sqlalchemy.orm import Session
@@ -13,7 +14,13 @@ from backtesting.persistence_service import (
     BacktestPersistenceService,
     BacktestRunInput,
 )
-from database.models import BacktestRun, HistoricalOddSnapshot, Match
+from database.models import BacktestRun, Competition, HistoricalOddSnapshot, Match
+from models.form_features import build_match_form_features
+from models.historical_elo import (
+    HistoricalEloCalculator,
+    HistoricalEloConfig,
+    PreMatchEloRating,
+)
 from models.value_metrics import ValueMetricsCalculator, ValueMetricsInput
 
 
@@ -26,7 +33,7 @@ class HistoricalPoissonBacktestConfig:
 
     competition_id: int
     name: str
-    model_version: str = "historical-poisson-1.0"
+    model_version: str = "historical-poisson-1.1"
     strategy_name: str = "flat_positive_edge"
     test_start_date: str = "1900-01-01"
     test_end_date: str = "2999-12-31"
@@ -54,6 +61,11 @@ class HistoricalPoissonBacktestConfig:
     recent_form_half_life_matches: float = 0.0
     home_lambda_multiplier: float = 1.0
     away_lambda_multiplier: float = 1.0
+    elo_initial_rating: float = 1500.0
+    elo_k_factor: float = 24.0
+    elo_home_advantage: float = 65.0
+    elo_season_regression: float = 0.15
+    elo_lambda_weight: float = 0.0
 
 @dataclass(frozen=True, slots=True)
 class RollingPoissonProbabilities:
@@ -65,6 +77,15 @@ class RollingPoissonProbabilities:
     lambda_home: float
     lambda_away: float
     form_goal_diff_delta: float
+    form_goal_diff_delta_10: float
+    form_points_delta_5: float
+    form_conceded_trend_delta: float
+    form_expected_strength_delta: float
+    home_clean_sheet_rate_5: float
+    away_clean_sheet_rate_5: float
+    home_elo: float
+    away_elo: float
+    elo_diff: float
 
 
 class HistoricalPoissonBacktester:
@@ -116,14 +137,23 @@ class HistoricalPoissonBacktester:
                     f"home_lambda_multiplier="
                     f"{config.home_lambda_multiplier}; "
                     f"away_lambda_multiplier="
-                    f"{config.away_lambda_multiplier}"
+                    f"{config.away_lambda_multiplier}; "
+                    f"elo_k_factor={config.elo_k_factor}; "
+                    f"elo_home_advantage={config.elo_home_advantage}; "
+                    f"elo_season_regression={config.elo_season_regression}; "
+                    f"elo_lambda_weight={config.elo_lambda_weight}"
                 ),
             )
         )
 
         matches = self._load_test_matches(config)
+        elo_by_match = self._load_historical_elo_ratings(config)
         for match in matches:
-            probabilities = self._estimate_probabilities(match, config)
+            probabilities = self._estimate_probabilities(
+                match,
+                config,
+                elo_rating=elo_by_match.get(match.id),
+            )
             if probabilities is None:
                 continue
 
@@ -199,7 +229,22 @@ class HistoricalPoissonBacktester:
                             f"lambda_home={probabilities.lambda_home:.3f}; "
                             f"lambda_away={probabilities.lambda_away:.3f}; "
                             f"form_gd_delta="
-                            f"{probabilities.form_goal_diff_delta:.3f}"
+                            f"{probabilities.form_goal_diff_delta:.3f}; "
+                            f"form_gd_delta_10="
+                            f"{probabilities.form_goal_diff_delta_10:.3f}; "
+                            f"form_points_delta_5="
+                            f"{probabilities.form_points_delta_5:.3f}; "
+                            f"form_conceded_trend_delta="
+                            f"{probabilities.form_conceded_trend_delta:.3f}; "
+                            f"form_expected_strength_delta="
+                            f"{probabilities.form_expected_strength_delta:.3f}; "
+                            f"home_clean_sheet_rate_5="
+                            f"{probabilities.home_clean_sheet_rate_5:.3f}; "
+                            f"away_clean_sheet_rate_5="
+                            f"{probabilities.away_clean_sheet_rate_5:.3f}; "
+                            f"home_elo={probabilities.home_elo:.1f}; "
+                            f"away_elo={probabilities.away_elo:.1f}; "
+                            f"elo_diff={probabilities.elo_diff:.1f}"
                         ),
                     )
                 )
@@ -234,6 +279,8 @@ class HistoricalPoissonBacktester:
         self,
         match: Match,
         config: HistoricalPoissonBacktestConfig,
+        *,
+        elo_rating: PreMatchEloRating | None = None,
     ) -> RollingPoissonProbabilities | None:
         prior_matches = (
             self._session.query(Match)
@@ -334,16 +381,24 @@ class HistoricalPoissonBacktester:
             * config.away_lambda_multiplier
         )
 
+        effective_elo = elo_rating or PreMatchEloRating(
+            home_rating=config.elo_initial_rating,
+            away_rating=config.elo_initial_rating,
+            elo_diff=0.0,
+            expected_home_score=0.5,
+        )
+        elo_signal = math.tanh(effective_elo.elo_diff / 400.0)
+        elo_multiplier = math.exp(config.elo_lambda_weight * elo_signal)
+        lambda_home *= elo_multiplier
+        lambda_away /= elo_multiplier
+
         lambda_home = self._clamp_lambda(lambda_home)
         lambda_away = self._clamp_lambda(lambda_away)
         home_prob, draw_prob, away_prob = self._aggregate_1x2(lambda_home, lambda_away)
-        form_goal_diff_delta = (
-            self._recent_goal_difference(
-                prior_matches, match.home_team_id, window_matches=6
-            )
-            - self._recent_goal_difference(
-                prior_matches, match.away_team_id, window_matches=6
-            )
+        form = build_match_form_features(
+            prior_matches,
+            match.home_team_id,
+            match.away_team_id,
         )
 
         return RollingPoissonProbabilities(
@@ -352,8 +407,49 @@ class HistoricalPoissonBacktester:
             away=away_prob,
             lambda_home=lambda_home,
             lambda_away=lambda_away,
-            form_goal_diff_delta=form_goal_diff_delta,
+            form_goal_diff_delta=form.goal_diff_delta_5,
+            form_goal_diff_delta_10=form.goal_diff_delta_10,
+            form_points_delta_5=form.points_delta_5,
+            form_conceded_trend_delta=form.conceded_trend_delta,
+            form_expected_strength_delta=form.expected_strength_delta,
+            home_clean_sheet_rate_5=form.home_5.clean_sheet_rate,
+            away_clean_sheet_rate_5=form.away_5.clean_sheet_rate,
+            home_elo=effective_elo.home_rating,
+            away_elo=effective_elo.away_rating,
+            elo_diff=effective_elo.elo_diff,
         )
+
+    def _load_historical_elo_ratings(
+        self,
+        config: HistoricalPoissonBacktestConfig,
+    ) -> dict[int, PreMatchEloRating]:
+        competition = self._session.get(Competition, config.competition_id)
+        if competition is None:
+            raise ValueError(f"Competition id={config.competition_id} not found")
+
+        matches = (
+            self._session.query(Match)
+            .join(Competition, Match.competition_id == Competition.id)
+            .filter(
+                Competition.sport_id == competition.sport_id,
+                Competition.name == competition.name,
+                Match.status == "finished",
+                Match.score_home_ft.is_not(None),
+                Match.score_away_ft.is_not(None),
+                Match.match_date <= config.test_end_date,
+            )
+            .order_by(Match.match_date.asc(), Match.id.asc())
+            .all()
+        )
+        calculator = HistoricalEloCalculator(
+            HistoricalEloConfig(
+                initial_rating=config.elo_initial_rating,
+                k_factor=config.elo_k_factor,
+                home_advantage=config.elo_home_advantage,
+                season_regression=config.elo_season_regression,
+            )
+        )
+        return calculator.build_pre_match_ratings(matches)
 
     def _load_closing_odds(self, match_id: int) -> dict[str, HistoricalOddSnapshot]:
         odds = (

@@ -35,6 +35,11 @@ class LeagueBettingPolicy:
     recent_form_half_life_matches: float = 0.0
     home_lambda_multiplier: float = 1.0
     away_lambda_multiplier: float = 1.0
+    elo_initial_rating: float = 1500.0
+    elo_k_factor: float = 24.0
+    elo_home_advantage: float = 65.0
+    elo_season_regression: float = 0.15
+    elo_lambda_weight: float = 0.0
 
 
 class LeaguePolicyStore:
