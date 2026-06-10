@@ -1,7 +1,7 @@
 # Betting Intelligence Engine — Progress Context
 
-Ultimo aggiornamento: 2026-06-09  
-Stato: **FASE 4A — Model Improvement attiva**
+Ultimo aggiornamento: 2026-06-11  
+Stato: **FASE 4B — Probabilistic Signal Improvement attiva**
 
 ---
 
@@ -88,7 +88,8 @@ FASE 1  Setup + DB + Alembic                         ✅ completata
 FASE 2  Scraper ELO + Import storico                 ✅ completata
 FASE 3  Poisson + Backtesting + Calibration           ✅ completata
 FASE 3C Batch 5 leghe × 5 stagioni + fair odds        ✅ completata
-FASE 4A Model Improvement                             🔄 attiva
+FASE 4A Model Improvement                             ✅ completata
+FASE 4B Probabilistic Signal Improvement              🔄 attiva
 FASE 5  Dashboard Streamlit                           ⏳ futura
 FASE 6  Chatbot Ollama                                ⏳ futura
 ```
@@ -97,7 +98,51 @@ Decisione attuale:
 
 ```text
 Non passare ancora a dashboard/chatbot.
-La pipeline funziona, ma il modello non è ancora profittevole.
+La pipeline funziona, ma il segnale di betting non e' ancora abbastanza
+robusto per essere considerato competitivo.
+```
+
+---
+
+## 4B. Piano operativo — Probabilistic Signal Improvement
+
+Priorita' concreta della fase attiva:
+
+```text
+1. Aggiungere ELO storico pre-match per ogni partita.
+2. Aggiungere feature di forma robuste su finestre 5/10 match.
+3. Creare un meta-model leggero sopra il Poisson per selezionare edge affidabili.
+4. Separare le policy HOME / DRAW / AWAY senza regole condivise implicite.
+5. Usare opening vs closing odds e CLV quando i dati sono disponibili.
+6. Valutare stabilita' per stagione, lega, drawdown, hit rate e volume minimo.
+7. Estendere i mercati naturali del Poisson: Over/Under 2.5 e BTTS prima di Asian handicap e double chance.
+```
+
+Regola di fase:
+
+```text
+Non cercare solo soglie migliori.
+La priorita' e' migliorare il segnale probabilistico e dimostrare se il value esiste prima del movimento del mercato.
+Ogni step chiuso deve avere codice, test/verifica e commit dedicato.
+Se uno step richiede un componente successivo, si puo' implementare quel componente e poi tornare sullo step precedente.
+```
+
+Vincolo operativo WSL:
+
+```bash
+wsl -d Ubuntu --cd /home/rigoni_g/Personal/Betting_Intelligence -- .venv/bin/python -m pytest -q
+```
+
+Nel runtime Codex attuale il filesystem Linux e' visibile direttamente da:
+
+```bash
+/home/rigoni_g/Personal/Betting_Intelligence
+```
+
+Ambiente virtuale:
+
+```bash
+source .venv/bin/activate
 ```
 
 ---
