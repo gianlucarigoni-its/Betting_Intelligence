@@ -123,6 +123,20 @@ class FootballDataImporter:
                     snapshot_time=match.match_date,
                     source_url=source_url,
                 )
+                odds_imported += self._import_bet365_ou_25_odds(
+                    match_id=match.id,
+                    bookmaker_id=bookmaker.id,
+                    row=row,
+                    snapshot_time=match.match_date,
+                    source_url=source_url,
+                )
+                odds_imported += self._import_bet365_btts_odds(
+                    match_id=match.id,
+                    bookmaker_id=bookmaker.id,
+                    row=row,
+                    snapshot_time=match.match_date,
+                    source_url=source_url,
+                )
             except (KeyError, TypeError, ValueError, IntegrityError):
                 self._session.rollback()
                 skipped_rows += 1
@@ -205,6 +219,174 @@ class FootballDataImporter:
             is_closing=True,
             source_url=source_url,
         )
+
+    def _import_bet365_ou_25_odds(
+        self,
+        *,
+        match_id: int,
+        bookmaker_id: int,
+        row: dict[str, str],
+        snapshot_time: str,
+        source_url: str | None,
+    ) -> int:
+        opening_map = {
+            "OVER_2_5": row.get("B365>2.5"),
+            "UNDER_2_5": row.get("B365<2.5"),
+        }
+        closing_map = {
+            "OVER_2_5": row.get("B365C>2.5"),
+            "UNDER_2_5": row.get("B365C<2.5"),
+        }
+        return self._import_optional_opening_closing_market(
+            match_id=match_id,
+            bookmaker_id=bookmaker_id,
+            market_type="OU_2_5",
+            market_category="goals_total",
+            opening_map=opening_map,
+            closing_map=closing_map,
+            snapshot_time=snapshot_time,
+            source_url=source_url,
+        )
+
+    def _import_bet365_btts_odds(
+        self,
+        *,
+        match_id: int,
+        bookmaker_id: int,
+        row: dict[str, str],
+        snapshot_time: str,
+        source_url: str | None,
+    ) -> int:
+        opening_map = {
+            "BTTS_YES": row.get("B365GG"),
+            "BTTS_NO": row.get("B365NG"),
+        }
+        closing_map = {
+            "BTTS_YES": row.get("B365CGG"),
+            "BTTS_NO": row.get("B365CNG"),
+        }
+        return self._import_optional_opening_closing_market(
+            match_id=match_id,
+            bookmaker_id=bookmaker_id,
+            market_type="BTTS",
+            market_category="both_teams_to_score",
+            opening_map=opening_map,
+            closing_map=closing_map,
+            snapshot_time=snapshot_time,
+            source_url=source_url,
+        )
+
+    def _import_optional_opening_closing_market(
+        self,
+        *,
+        match_id: int,
+        bookmaker_id: int,
+        market_type: str,
+        market_category: str,
+        opening_map: dict[str, str | None],
+        closing_map: dict[str, str | None],
+        snapshot_time: str,
+        source_url: str | None,
+    ) -> int:
+        has_opening = all(self._has_value(value) for value in opening_map.values())
+        has_closing = all(self._has_value(value) for value in closing_map.values())
+        imported = 0
+        if has_closing:
+            if has_opening:
+                imported += self._import_market_snapshot(
+                    match_id=match_id,
+                    bookmaker_id=bookmaker_id,
+                    market_type=market_type,
+                    market_category=market_category,
+                    odds_map=opening_map,
+                    snapshot_time=f"{snapshot_time} opening",
+                    is_opening=True,
+                    is_closing=False,
+                    source_url=source_url,
+                )
+            imported += self._import_market_snapshot(
+                match_id=match_id,
+                bookmaker_id=bookmaker_id,
+                market_type=market_type,
+                market_category=market_category,
+                odds_map=closing_map,
+                snapshot_time=snapshot_time,
+                is_opening=False,
+                is_closing=True,
+                source_url=source_url,
+            )
+            return imported
+        if not has_opening:
+            return 0
+        return self._import_market_snapshot(
+            match_id=match_id,
+            bookmaker_id=bookmaker_id,
+            market_type=market_type,
+            market_category=market_category,
+            odds_map=opening_map,
+            snapshot_time=snapshot_time,
+            is_opening=False,
+            is_closing=True,
+            source_url=source_url,
+        )
+
+    def _import_market_snapshot(
+        self,
+        *,
+        match_id: int,
+        bookmaker_id: int,
+        market_type: str,
+        market_category: str,
+        odds_map: dict[str, str | None],
+        snapshot_time: str,
+        is_opening: bool,
+        is_closing: bool,
+        source_url: str | None,
+    ) -> int:
+        if any(not self._has_value(value) for value in odds_map.values()):
+            return 0
+        decimal_odds = {selection: float(value) for selection, value in odds_map.items() if value is not None}
+        implied_probs = {selection: 1.0 / odd for selection, odd in decimal_odds.items()}
+        implied_prob_total = sum(implied_probs.values())
+        fair_probs = {selection: implied_prob / implied_prob_total for selection, implied_prob in implied_probs.items()}
+        overround_pct = (implied_prob_total - 1.0) * 100.0
+        imported = 0
+        for selection, odd_value in decimal_odds.items():
+            exists = (
+                self._session.query(HistoricalOddSnapshot)
+                .filter(
+                    HistoricalOddSnapshot.match_id == match_id,
+                    HistoricalOddSnapshot.bookmaker_id == bookmaker_id,
+                    HistoricalOddSnapshot.market_type == market_type,
+                    HistoricalOddSnapshot.selection == selection,
+                    HistoricalOddSnapshot.snapshot_time == snapshot_time,
+                )
+                .one_or_none()
+            )
+            if exists is not None:
+                continue
+            self._session.add(
+                HistoricalOddSnapshot(
+                    match_id=match_id,
+                    bookmaker_id=bookmaker_id,
+                    source_name=self.SOURCE_NAME,
+                    market_level=1,
+                    market_type=market_type,
+                    market_category=market_category,
+                    selection=selection,
+                    odd_value=odd_value,
+                    implied_prob=implied_probs[selection],
+                    fair_prob=fair_probs[selection],
+                    overround_pct=overround_pct,
+                    snapshot_time=snapshot_time,
+                    is_opening=is_opening,
+                    is_closing=is_closing,
+                    source_url=source_url,
+                )
+            )
+            imported += 1
+        self._session.flush()
+        return imported
 
     def _import_1x2_snapshot(
         self,

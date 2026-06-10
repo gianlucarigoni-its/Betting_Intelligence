@@ -18,6 +18,7 @@ from backtesting.persistence_service import (
 from database.models import BacktestRun, Competition, HistoricalOddSnapshot, Match
 from backtesting.selection_meta_model import SelectionMetaModel
 from models.form_features import build_match_form_features
+from models.poisson_markets import calculate_poisson_market_probabilities
 from models.historical_elo import (
     HistoricalEloCalculator,
     HistoricalEloConfig,
@@ -90,6 +91,10 @@ class RollingPoissonProbabilities:
     home_elo: float
     away_elo: float
     elo_diff: float
+    over_25: float
+    under_25: float
+    btts_yes: float
+    btts_no: float
 
 
 class HistoricalPoissonBacktester:
@@ -416,7 +421,14 @@ class HistoricalPoissonBacktester:
 
         lambda_home = self._clamp_lambda(lambda_home)
         lambda_away = self._clamp_lambda(lambda_away)
-        home_prob, draw_prob, away_prob = self._aggregate_1x2(lambda_home, lambda_away)
+        market_probabilities = calculate_poisson_market_probabilities(
+            lambda_home,
+            lambda_away,
+            max_goals=MAX_GOALS,
+        )
+        home_prob = market_probabilities.home
+        draw_prob = market_probabilities.draw
+        away_prob = market_probabilities.away
         form = build_match_form_features(
             prior_matches,
             match.home_team_id,
@@ -439,6 +451,10 @@ class HistoricalPoissonBacktester:
             home_elo=effective_elo.home_rating,
             away_elo=effective_elo.away_rating,
             elo_diff=effective_elo.elo_diff,
+            over_25=market_probabilities.over_25,
+            under_25=market_probabilities.under_25,
+            btts_yes=market_probabilities.btts_yes,
+            btts_no=market_probabilities.btts_no,
         )
 
     @staticmethod
@@ -875,13 +891,29 @@ class HistoricalPoissonBacktester:
             return probabilities.draw
         if selection == "AWAY":
             return probabilities.away
+        if selection == "OVER_2_5":
+            return probabilities.over_25
+        if selection == "UNDER_2_5":
+            return probabilities.under_25
+        if selection == "BTTS_YES":
+            return probabilities.btts_yes
+        if selection == "BTTS_NO":
+            return probabilities.btts_no
         raise ValueError(f"Unsupported selection: {selection}")
 
     @staticmethod
     def _settlement_result(match: Match, selection: str) -> BacktestBetResult:
-        if match.score_home_ft == match.score_away_ft:
+        home_goals = match.score_home_ft or 0
+        away_goals = match.score_away_ft or 0
+        if selection in {"OVER_2_5", "UNDER_2_5"}:
+            actual = "OVER_2_5" if home_goals + away_goals >= 3 else "UNDER_2_5"
+            return BacktestBetResult.WON if selection == actual else BacktestBetResult.LOST
+        if selection in {"BTTS_YES", "BTTS_NO"}:
+            actual = "BTTS_YES" if home_goals > 0 and away_goals > 0 else "BTTS_NO"
+            return BacktestBetResult.WON if selection == actual else BacktestBetResult.LOST
+        if home_goals == away_goals:
             actual = "DRAW"
-        elif (match.score_home_ft or 0) > (match.score_away_ft or 0):
+        elif home_goals > away_goals:
             actual = "HOME"
         else:
             actual = "AWAY"

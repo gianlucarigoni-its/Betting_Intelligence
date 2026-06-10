@@ -237,6 +237,33 @@ I dati storici esistenti vanno reimportati per popolare opening odds quando la s
 
 ---
 
+## 4B. Step 4 chiuso
+
+Implementato e verificato:
+
+```text
+- Probabilita' Poisson per Over/Under 2.5.
+- Probabilita' Poisson per BTTS yes/no.
+- RollingPoissonProbabilities esteso con over_25, under_25, btts_yes, btts_no.
+- Settlement esteso per OVER_2_5, UNDER_2_5, BTTS_YES, BTTS_NO.
+- Importer Football-Data pronto a caricare quote Bet365 O/U 2.5 e BTTS quando le colonne sono disponibili.
+```
+
+Stato test:
+
+```text
+71 passed
+```
+
+Decisione:
+
+```text
+I mercati naturali del Poisson sono disponibili a livello probabilistico e dati.
+Non sono ancora promossi come betting policy di default: servono reimport quote, backtest opening/closing e stability report dedicato.
+```
+
+---
+
 ## 5. Componenti completati
 
 ### Database e Alembic
