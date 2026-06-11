@@ -2026,3 +2026,31 @@ Decision:
 
 Report:
 - `reports/selection_specific_readiness_gate_report.md`
+
+
+---
+
+## Step 18 - Selection-Specific Nested Walk-Forward
+
+Status: completed, tested, not capital-ready.
+
+Changes:
+- Added `backtesting.run_selection_specific_nested_walkforward`.
+- OVER and UNDER now train and select thresholds independently.
+- Added selection and combined production readiness gates.
+
+Validation:
+- Full suite: 90 passed.
+- Quality, volume-first, and joint win+CLV nested tests on runs `590-614`.
+
+Best result:
+- Joint win+CLV combined: 13 bets, ROI +34.54%, CLV +2.01%.
+- Quality combined: 71 bets, ROI +9.21%, CLV +0.49%.
+- Capital readiness: FAIL due volume and confidence intervals.
+
+Decision:
+- Keep selection-specific nested validation.
+- Next cycle expands the historical window to test whether the quality subset scales beyond 100 bets.
+
+Report:
+- `reports/selection_specific_nested_walkforward_report.md`
