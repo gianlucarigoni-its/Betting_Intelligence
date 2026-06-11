@@ -58,3 +58,10 @@ def evaluate_capital_readiness(
         failures=tuple(failures),
         drawdown_pct_of_stake=drawdown_pct,
     )
+
+
+def evaluate_slice_readiness(
+    metrics: StabilitySliceMetrics,
+    criteria: CapitalReadinessCriteria | None = None,
+) -> CapitalReadinessResult:
+    return evaluate_capital_readiness(metrics, criteria)

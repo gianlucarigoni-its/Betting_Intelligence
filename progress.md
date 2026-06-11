@@ -1999,3 +1999,30 @@ Decision:
 
 Report:
 - `reports/ou_policy_separation_sweep_report.md`
+
+
+---
+
+## Step 17 - Selection-Specific Readiness Gate
+
+Status: completed, tested.
+
+Change:
+- Added selection-specific readiness checks to the capital-readiness report.
+- TOTAL no longer hides weak `OVER_2_5` / `UNDER_2_5` slices.
+
+Validation:
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_capital_readiness.py tests/test_stability_report.py -q -s`
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_selection_meta_model.py tests/test_selection_meta_nested_walkforward.py -q -s`
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -s`
+
+Result:
+- Promotion workflow is now selection-aware.
+- Capital readiness: FAIL on the current engine and datasets.
+
+Decision:
+- Keep the selection-specific gate.
+- Next cycle should use this gate to drive separate OVER and UNDER promotion rules.
+
+Report:
+- `reports/selection_specific_readiness_gate_report.md`

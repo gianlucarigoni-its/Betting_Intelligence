@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from backtesting.capital_readiness import CapitalReadinessCriteria, evaluate_capital_readiness
+from backtesting.capital_readiness import CapitalReadinessCriteria, evaluate_capital_readiness, evaluate_slice_readiness
 from backtesting.run_stability_report import _parse_run_ids
 from backtesting.stability_report import BacktestStabilityAnalyzer
 from database.base import SessionLocal
@@ -55,6 +55,17 @@ def main() -> None:
         print("FAILURES")
         for failure in result.failures:
             print(f"- {failure}")
+
+    print("
+BY_SELECTION_READINESS")
+    for metric in report.by_selection:
+        slice_result = evaluate_slice_readiness(metric, criteria)
+        slice_status = "PASS" if slice_result.passed else "FAIL"
+        print(f"{metric.label:<24} {slice_status} bets={metric.bets} roi={metric.roi_pct:.2f}% clv={metric.avg_clv_pct:.2f}%")
+        if slice_result.failures:
+            print("  FAILURES")
+            for failure in slice_result.failures:
+                print(f"  - {failure}")
 
 
 if __name__ == "__main__":
