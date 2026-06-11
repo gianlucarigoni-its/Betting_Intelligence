@@ -334,7 +334,53 @@ Non basta ancora per promuovere il motore a sistema betting competitivo: volume 
 Stato test:
 
 ```text
-72 passed
+76 passed
+```
+
+---
+
+## 4B. Step 6 chiuso - O/U 2.5 validato ma non promosso
+
+Implementato e verificato:
+
+```text
+- Runner backtest esteso a market_type = 1X2 | OU_2_5.
+- Policy separata per OVER_2_5 e UNDER_2_5.
+- CLI di calibration allineata al nuovo mercato.
+- Stability report con bootstrap CI su ROI e CLV.
+- Test dedicati per O/U e confidence interval.
+```
+
+Risultati O/U 2.5 opening, run 340-389:
+
+```text
+bets: 1756
+ROI: -7.09%
+roi_ci: [-11.56%, -2.91%]
+avg CLV: -0.34%
+clv_ci: [-0.62%, -0.04%]
+```
+
+Risultati O/U 2.5 closing, run 390-439:
+
+```text
+bets: 1730
+ROI: -4.64%
+roi_ci: [-9.69%, -0.29%]
+avg CLV: 0.00%
+```
+
+Decisione:
+
+```text
+O/U 2.5 e' stato messo in produzione come mercato supportato e misurabile, ma non e' competitivo abbastanza per essere promosso come policy live con capitale reale.
+Il closing e' meno negativo dell'opening, ma nessuno dei due supera la soglia di affidabilita'.
+```
+
+Stato test:
+
+```text
+76 passed
 ```
 
 ---
