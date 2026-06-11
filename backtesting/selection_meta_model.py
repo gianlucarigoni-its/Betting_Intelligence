@@ -98,24 +98,7 @@ class SelectionMetaModel:
         for bet, _match, competition in query.all():
             if bet.result == "pending":
                 continue
-            payload = _parse_reason_payload(bet.reason or "")
-            lambda_home = _float_from_payload(payload, "lambda_home")
-            lambda_away = _float_from_payload(payload, "lambda_away")
-            samples.append(
-                SelectionMetaModelSample(
-                    selection=bet.selection,
-                    league=competition.name,
-                    edge_pct=bet.edge_pct,
-                    bookmaker_odds=bet.bookmaker_odds,
-                    model_probability=bet.model_probability,
-                    bookmaker_probability=bet.bookmaker_probability,
-                    model_market_distance=abs(bet.model_probability - bet.bookmaker_probability),
-                    lambda_home=lambda_home,
-                    lambda_away=lambda_away,
-                    lambda_gap=abs(lambda_home - lambda_away),
-                    label=1 if bet.result == "won" else 0,
-                )
-            )
+            samples.append(build_selection_meta_model_sample(bet, competition.name))
         return samples
 
     @staticmethod
@@ -140,6 +123,30 @@ class SelectionMetaModel:
             ("vectorizer", DictVectorizer(sparse=False)),
             ("classifier", classifier),
         ])
+
+
+def build_selection_meta_model_sample(
+    bet: BacktestBet,
+    league_name: str,
+) -> SelectionMetaModelSample:
+    """Build one meta-model sample from a persisted backtest record."""
+
+    payload = _parse_reason_payload(bet.reason or "")
+    lambda_home = _float_from_payload(payload, "lambda_home")
+    lambda_away = _float_from_payload(payload, "lambda_away")
+    return SelectionMetaModelSample(
+        selection=bet.selection,
+        league=league_name,
+        edge_pct=bet.edge_pct,
+        bookmaker_odds=bet.bookmaker_odds,
+        model_probability=bet.model_probability,
+        bookmaker_probability=bet.bookmaker_probability,
+        model_market_distance=abs(bet.model_probability - bet.bookmaker_probability),
+        lambda_home=lambda_home,
+        lambda_away=lambda_away,
+        lambda_gap=abs(lambda_home - lambda_away),
+        label=1 if bet.result == "won" else 0,
+    )
 
 
 def _parse_reason_payload(reason: str) -> dict[str, str]:
