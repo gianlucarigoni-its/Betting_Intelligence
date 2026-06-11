@@ -34,6 +34,14 @@ def _sample(
         lambda_home=lambda_home,
         lambda_away=lambda_away,
         lambda_gap=abs(lambda_home - lambda_away),
+        form_goal_diff_delta=0.0,
+        form_goal_diff_delta_10=0.0,
+        form_points_delta_5=0.0,
+        form_conceded_trend_delta=0.0,
+        form_expected_strength_delta=0.0,
+        home_clean_sheet_rate_5=0.0,
+        away_clean_sheet_rate_5=0.0,
+        elo_diff=0.0,
         label=label,
     )
 

@@ -1919,3 +1919,32 @@ Decision:
 
 Report:
 - `reports/btts_opening_market_enablement_report.md`
+
+
+---
+
+## Step 14 - Meta-Model Probability Architecture
+
+Status: completed, tested, generator bottleneck confirmed.
+
+Changes:
+- Meta-model now consumes ELO and robust 5/10-match form features already persisted by the backtester.
+- Added input scaling.
+- Removed balanced class weights so `predict_proba` has a valid probability interpretation.
+
+Validation:
+- Full suite: 88 passed.
+- Nested O/U opening runs `440-464`.
+
+Result:
+- Single model: 718 bets, ROI -2.78%, CLV -0.11%.
+- Dual model: 1152 bets, ROI -6.05%, CLV -0.37%.
+- Capital readiness: FAIL.
+
+Decision:
+- Keep the corrected probability architecture.
+- Stop tuning meta thresholds as the primary improvement path.
+- Move structural work to the Poisson goal-distribution generator.
+
+Report:
+- `reports/meta_probability_architecture_audit.md`

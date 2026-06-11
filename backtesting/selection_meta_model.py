@@ -10,6 +10,7 @@ from typing import Iterable
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sqlalchemy.orm import Session
 
 from database.models import BacktestBet, BacktestRun, Competition, Match
@@ -31,6 +32,14 @@ class SelectionMetaModelSample:
     lambda_home: float
     lambda_away: float
     lambda_gap: float
+    form_goal_diff_delta: float
+    form_goal_diff_delta_10: float
+    form_points_delta_5: float
+    form_conceded_trend_delta: float
+    form_expected_strength_delta: float
+    home_clean_sheet_rate_5: float
+    away_clean_sheet_rate_5: float
+    elo_diff: float
     label: int
 
 
@@ -47,6 +56,14 @@ class SelectionMetaModel:
         "lambda_home",
         "lambda_away",
         "lambda_gap",
+        "form_goal_diff_delta",
+        "form_goal_diff_delta_10",
+        "form_points_delta_5",
+        "form_conceded_trend_delta",
+        "form_expected_strength_delta",
+        "home_clean_sheet_rate_5",
+        "away_clean_sheet_rate_5",
+        "elo_diff",
     )
 
     def __init__(self, pipeline: Pipeline | None = None) -> None:
@@ -125,13 +142,22 @@ class SelectionMetaModel:
             "lambda_home": sample.lambda_home,
             "lambda_away": sample.lambda_away,
             "lambda_gap": sample.lambda_gap,
+            "form_goal_diff_delta": sample.form_goal_diff_delta,
+            "form_goal_diff_delta_10": sample.form_goal_diff_delta_10,
+            "form_points_delta_5": sample.form_points_delta_5,
+            "form_conceded_trend_delta": sample.form_conceded_trend_delta,
+            "form_expected_strength_delta": sample.form_expected_strength_delta,
+            "home_clean_sheet_rate_5": sample.home_clean_sheet_rate_5,
+            "away_clean_sheet_rate_5": sample.away_clean_sheet_rate_5,
+            "elo_diff": sample.elo_diff,
         }
 
     @classmethod
     def _build_pipeline(cls) -> Pipeline:
-        classifier = LogisticRegression(max_iter=2000, class_weight="balanced")
+        classifier = LogisticRegression(max_iter=2000)
         return Pipeline([
             ("vectorizer", DictVectorizer(sparse=False)),
+            ("scaler", StandardScaler()),
             ("classifier", classifier),
         ])
 
@@ -161,6 +187,14 @@ def build_selection_meta_model_sample(
         lambda_home=lambda_home,
         lambda_away=lambda_away,
         lambda_gap=abs(lambda_home - lambda_away),
+        form_goal_diff_delta=_float_from_payload(payload, "form_gd_delta"),
+        form_goal_diff_delta_10=_float_from_payload(payload, "form_gd_delta_10"),
+        form_points_delta_5=_float_from_payload(payload, "form_points_delta_5"),
+        form_conceded_trend_delta=_float_from_payload(payload, "form_conceded_trend_delta"),
+        form_expected_strength_delta=_float_from_payload(payload, "form_expected_strength_delta"),
+        home_clean_sheet_rate_5=_float_from_payload(payload, "home_clean_sheet_rate_5"),
+        away_clean_sheet_rate_5=_float_from_payload(payload, "away_clean_sheet_rate_5"),
+        elo_diff=_float_from_payload(payload, "elo_diff"),
         label=label_override if label_override is not None else (1 if bet.result == "won" else 0),
     )
 
