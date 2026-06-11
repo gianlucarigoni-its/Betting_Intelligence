@@ -532,6 +532,51 @@ Report dedicato:
 reports/ou_opening_meta_walkforward_report.md
 ```
 
+
+---
+
+## 4B. Step 10 chiuso - nested walk-forward meta O/U opening
+
+Implementato e verificato:
+
+```text
+- Aggiunto runner nested: backtesting.run_selection_meta_nested_walkforward.
+- La soglia del meta-model viene scelta solo su inner train folds.
+- La soglia scelta viene congelata sul fold holdout successivo.
+- Il runner produce direttamente verdict capital-readiness con ROI CI, CLV CI, volume e drawdown.
+- Aggiunti test per la logica di ranking delle soglie.
+```
+
+Risultati nested O/U opening, run 440-464:
+
+```text
+Grid qualita' 0.55-0.62:
+meta 58 bet, ROI +11.50%, CLV +0.59%, ROI CI [-5.55%, +26.78%], CLV CI [-0.92%, +2.06%], FAIL per volume e CI.
+
+Grid volume 0.55-0.60:
+meta 106 bet, ROI +5.29%, CLV +0.27%, ROI CI [-7.94%, +18.19%], CLV CI [-0.72%, +1.20%], FAIL per CI ROI/CLV e fold 2023/2024 negativo.
+```
+
+Decisione:
+
+```text
+Il meta-model arricchito e nested e' un miglioramento reale rispetto al baseline O/U opening negativo.
+Non e' ancora capital-ready: il segnale non ha abbastanza volume robusto e non ha CLV CI positiva.
+Il prossimo step deve rendere il selector CLV-aware, perche' il label win/loss non ottimizza direttamente la competitivita' contro il mercato.
+```
+
+Stato test:
+
+```text
+83 passed con: .venv/bin/python -m pytest -q -s
+```
+
+Report dedicato:
+
+```text
+reports/ou_opening_nested_meta_walkforward_report.md
+```
+
 ---
 
 ## 4B. Report aggiornato
