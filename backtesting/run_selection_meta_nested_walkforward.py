@@ -88,6 +88,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--min-roi-ci-low-pct", type=float, default=0.0)
     parser.add_argument("--min-clv-ci-low-pct", type=float, default=0.0)
     parser.add_argument("--max-drawdown-pct-of-stake", type=float, default=20.0)
+    parser.add_argument("--clv-threshold-pct", type=float, default=0.0)
     parser.add_argument(
         "--selection-objective",
         choices=("quality", "volume_first"),
@@ -256,6 +257,7 @@ def _aggregate_threshold_summary(
     min_inner_train_seasons: int,
     label_strategy: str,
     objective: str,
+    clv_threshold_pct: float,
     use_dual_model: bool,
     dual_combination: str,
 ) -> ThresholdSummary | None:
@@ -296,6 +298,7 @@ def _aggregate_threshold_summary(
                 inner_train_rows,
                 closing_odds,
                 label_strategy,
+                clv_threshold_pct=clv_threshold_pct,
                 use_dual_model=use_dual_model,
             )
         except ValueError:
@@ -373,6 +376,7 @@ def _select_threshold(
     min_meta_bets: int,
     label_strategy: str,
     objective: str,
+    clv_threshold_pct: float,
     use_dual_model: bool,
     dual_combination: str,
 ) -> tuple[float, ThresholdSummary | None]:
@@ -437,6 +441,7 @@ def _evaluate_outer_fold(
             train_rows,
             closing_odds,
             label_strategy,
+            clv_threshold_pct=clv_threshold_pct,
             use_dual_model=use_dual_model,
         )
     except ValueError:
@@ -451,6 +456,7 @@ def _evaluate_outer_fold(
                 primary_model,
                 secondary_model,
                 label_strategy,
+                clv_threshold_pct=clv_threshold_pct,
                 dual_combination=dual_combination,
             ),
             row[0],

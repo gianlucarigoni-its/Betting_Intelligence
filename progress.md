@@ -1861,3 +1861,32 @@ FASE 4A.2 — Bet Selection Diagnostics.
 Analizzare le bet reali della baseline run 34–58 per selection, edge bin, odds bin.
 Poi modificare le soglie di selezione, non il lambda.
 ```
+
+
+---
+
+## Step 12 - Configurable CLV Label Threshold for Nested O/U Meta-Model
+
+Status: completed, committed after tests.
+
+Change:
+- Added `--clv-threshold-pct` to `backtesting.run_selection_meta_nested_walkforward`.
+- Propagated the CLV label threshold through inner threshold selection, outer evaluation, and dual-model scoring.
+- CLV supervision now supports labels such as `clv_pct >= -0.25`, not only `clv_pct > 0`.
+
+Validation:
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_selection_meta_nested_walkforward.py -q -s`
+- O/U opening nested walk-forward on runs `440-464`, dual mean, volume-first, thresholds `0.55,0.58,0.59,0.60,0.605,0.61`.
+
+Result:
+- Baseline: 1153 bets, ROI -6.13%, CLV -0.36%.
+- Meta selector: 130 bets, ROI +1.66%, CLV +0.34%, drawdown/stake 7.38%.
+- Capital readiness: FAIL because ROI CI [-9.81%, +14.36%] and CLV CI [-0.65%, +1.28%] cross zero.
+
+Decision:
+- Keep the configurable CLV label threshold as infrastructure.
+- Do not mark the engine capital-ready.
+- Next cycle must add stricter production gating/ranking and fold-level deployment rejection, because threshold tuning alone is not enough.
+
+Report:
+- `reports/ou_clv_threshold_nested_report.md`
