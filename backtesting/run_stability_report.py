@@ -27,10 +27,13 @@ def _parse_run_ids(value: str | None) -> list[int] | None:
 def _print_slice(metric: StabilitySliceMetrics) -> None:
     roi = "N/A" if metric.roi_pct is None else f"{metric.roi_pct:.2f}%"
     clv = "N/A" if metric.avg_clv_pct is None else f"{metric.avg_clv_pct:.2f}%"
+    roi_ci = "N/A" if metric.roi_ci_low_pct is None else f"[{metric.roi_ci_low_pct:.2f}%, {metric.roi_ci_high_pct:.2f}%]"
+    clv_ci = "N/A" if metric.clv_ci_low_pct is None else f"[{metric.clv_ci_low_pct:.2f}%, {metric.clv_ci_high_pct:.2f}%]"
     print(
         f"{metric.label:<24} bets={metric.bets:<4} "
         f"hit={metric.hit_rate:.3f} roi={roi:<8} "
-        f"pl={metric.profit_loss:.2f} dd={metric.max_drawdown:.2f} clv={clv}"
+        f"roi_ci={roi_ci:<20} pl={metric.profit_loss:.2f} "
+        f"dd={metric.max_drawdown:.2f} clv={clv} clv_ci={clv_ci}"
     )
 
 

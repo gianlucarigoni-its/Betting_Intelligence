@@ -30,6 +30,16 @@ class LeagueBettingPolicy:
     away_min_model_probability: float = 0.58
     away_max_bookmaker_odds: float = 1.8
     allow_away_bets: bool = False
+    allow_over_bets: bool = False
+    allow_under_bets: bool = False
+    over_min_edge_pct: float = 4.0
+    over_max_edge_pct: float | None = 9.0
+    over_min_model_probability: float = 0.52
+    over_max_bookmaker_odds: float | None = 2.4
+    under_min_edge_pct: float = 4.0
+    under_max_edge_pct: float | None = 9.0
+    under_min_model_probability: float = 0.52
+    under_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
     recent_form_half_life_matches: float = 0.0

@@ -49,6 +49,7 @@ LOGGER = logging.getLogger(__name__)
 class BacktestDefaults:
     initial_bankroll: float = 1000.0
     flat_stake: float = 10.0
+    market_type: str = "1X2"
     allow_home_bets: bool = True
     allow_draw_bets: bool = False
     min_edge_pct: float = 5.0
@@ -66,6 +67,16 @@ class BacktestDefaults:
     away_min_model_probability: float = 0.58
     away_max_bookmaker_odds: float = 1.8
     allow_away_bets: bool = False
+    allow_over_bets: bool = False
+    allow_under_bets: bool = False
+    over_min_edge_pct: float = 4.0
+    over_max_edge_pct: float | None = 9.0
+    over_min_model_probability: float = 0.52
+    over_max_bookmaker_odds: float | None = 2.4
+    under_min_edge_pct: float = 4.0
+    under_max_edge_pct: float | None = 9.0
+    under_min_model_probability: float = 0.52
+    under_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
     recent_form_half_life_matches: float = 0.0
@@ -199,6 +210,16 @@ def _phase_backtest(
                     away_min_model_probability=defaults.away_min_model_probability,
                     away_max_bookmaker_odds=defaults.away_max_bookmaker_odds,
                     allow_away_bets=defaults.allow_away_bets,
+                    allow_over_bets=defaults.allow_over_bets,
+                    allow_under_bets=defaults.allow_under_bets,
+                    over_min_edge_pct=defaults.over_min_edge_pct,
+                    over_max_edge_pct=defaults.over_max_edge_pct,
+                    over_min_model_probability=defaults.over_min_model_probability,
+                    over_max_bookmaker_odds=defaults.over_max_bookmaker_odds,
+                    under_min_edge_pct=defaults.under_min_edge_pct,
+                    under_max_edge_pct=defaults.under_max_edge_pct,
+                    under_min_model_probability=defaults.under_min_model_probability,
+                    under_max_bookmaker_odds=defaults.under_max_bookmaker_odds,
                     min_prior_matches=defaults.min_prior_matches,
                     shrinkage_matches=defaults.shrinkage_matches,
                     recent_form_half_life_matches=defaults.recent_form_half_life_matches,
@@ -209,8 +230,6 @@ def _phase_backtest(
                     elo_home_advantage=defaults.elo_home_advantage,
                     elo_season_regression=defaults.elo_season_regression,
                     elo_lambda_weight=defaults.elo_lambda_weight,
-                    selection_meta_model_path=defaults.selection_meta_model_path,
-                    odds_snapshot_type=defaults.odds_snapshot_type,
                 )
 
                 try:
@@ -226,6 +245,7 @@ def _phase_backtest(
                             test_end_date=test_end,
                             initial_bankroll=defaults.initial_bankroll,
                             flat_stake=defaults.flat_stake,
+                            market_type=defaults.market_type,
                             allow_home_bets=effective.allow_home_bets,
                             allow_draw_bets=effective.allow_draw_bets,
                             min_edge_pct=effective.min_edge_pct,
@@ -249,6 +269,16 @@ def _phase_backtest(
                             away_min_model_probability=effective.away_min_model_probability,
                             away_max_bookmaker_odds=effective.away_max_bookmaker_odds,
                             allow_away_bets=effective.allow_away_bets,
+                            allow_over_bets=effective.allow_over_bets,
+                            allow_under_bets=effective.allow_under_bets,
+                            over_min_edge_pct=effective.over_min_edge_pct,
+                            over_max_edge_pct=effective.over_max_edge_pct,
+                            over_min_model_probability=effective.over_min_model_probability,
+                            over_max_bookmaker_odds=effective.over_max_bookmaker_odds,
+                            under_min_edge_pct=effective.under_min_edge_pct,
+                            under_max_edge_pct=effective.under_max_edge_pct,
+                            under_min_model_probability=effective.under_min_model_probability,
+                            under_max_bookmaker_odds=effective.under_max_bookmaker_odds,
                             min_prior_matches=effective.min_prior_matches,
                             shrinkage_matches=effective.shrinkage_matches,
                             recent_form_half_life_matches=effective.recent_form_half_life_matches,
@@ -335,6 +365,12 @@ def _parse_args() -> argparse.Namespace:
     # Parametri backtest
     parser.add_argument("--initial-bankroll", type=float, default=1000.0)
     parser.add_argument("--flat-stake", type=float, default=10.0)
+    parser.add_argument(
+        "--market-type",
+        choices=("1X2", "OU_2_5"),
+        default="1X2",
+        help="Mercato da backtestare.",
+    )
     parser.add_argument("--min-edge-pct", type=float, default=5.0)
     parser.add_argument("--max-edge-pct", type=float, default=6.0)
     parser.add_argument(
@@ -349,6 +385,24 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Abilita la selezione AWAY oltre ai filtri globali.",
     )
+    parser.add_argument(
+        "--allow-over-bets",
+        action="store_true",
+        help="Abilita la selezione OVER_2_5 per il mercato O/U.",
+    )
+    parser.add_argument(
+        "--allow-under-bets",
+        action="store_true",
+        help="Abilita la selezione UNDER_2_5 per il mercato O/U.",
+    )
+    parser.add_argument("--over-min-edge-pct", type=float, default=4.0)
+    parser.add_argument("--over-max-edge-pct", type=float, default=9.0)
+    parser.add_argument("--over-min-model-probability", type=float, default=0.52)
+    parser.add_argument("--over-max-bookmaker-odds", type=float, default=2.4)
+    parser.add_argument("--under-min-edge-pct", type=float, default=4.0)
+    parser.add_argument("--under-max-edge-pct", type=float, default=9.0)
+    parser.add_argument("--under-min-model-probability", type=float, default=0.52)
+    parser.add_argument("--under-max-bookmaker-odds", type=float, default=2.4)
     parser.add_argument("--min-prior-matches", type=int, default=5)
     parser.add_argument("--shrinkage-matches", type=int, default=10)
     parser.add_argument(
@@ -419,6 +473,7 @@ def main() -> None:
     defaults = BacktestDefaults(
         initial_bankroll=args.initial_bankroll,
         flat_stake=args.flat_stake,
+        market_type=args.market_type,
         min_edge_pct=args.min_edge_pct,
         max_edge_pct=args.max_edge_pct,
         min_model_probability=args.min_model_probability,
@@ -427,6 +482,16 @@ def main() -> None:
         away_min_model_probability=args.away_min_model_probability,
         away_max_bookmaker_odds=args.away_max_bookmaker_odds,
         allow_away_bets=args.allow_away_bets,
+        allow_over_bets=args.allow_over_bets,
+        allow_under_bets=args.allow_under_bets,
+        over_min_edge_pct=args.over_min_edge_pct,
+        over_max_edge_pct=args.over_max_edge_pct,
+        over_min_model_probability=args.over_min_model_probability,
+        over_max_bookmaker_odds=args.over_max_bookmaker_odds,
+        under_min_edge_pct=args.under_min_edge_pct,
+        under_max_edge_pct=args.under_max_edge_pct,
+        under_min_model_probability=args.under_min_model_probability,
+        under_max_bookmaker_odds=args.under_max_bookmaker_odds,
         min_prior_matches=args.min_prior_matches,
         shrinkage_matches=args.shrinkage_matches,
         recent_form_half_life_matches=args.recent_form_half_life_matches,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import random
 from typing import Iterable
 
 from sqlalchemy.orm import Session
@@ -29,6 +30,10 @@ class StabilitySliceMetrics:
     max_drawdown: float
     avg_clv_pct: float | None
     clv_count: int
+    roi_ci_low_pct: float | None = None
+    roi_ci_high_pct: float | None = None
+    clv_ci_low_pct: float | None = None
+    clv_ci_high_pct: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +143,7 @@ class BacktestStabilityAnalyzer:
         wins = sum(1 for row in rows if row.bet.result == "won")
         total_staked = sum(row.bet.stake for row in rows)
         profit_loss = sum(row.bet.profit_loss or 0.0 for row in rows)
+        roi_ci = cls._bootstrap_roi_ci([(row.bet.profit_loss or 0.0, row.bet.stake) for row in rows])
         clv_values = [
             value
             for value in (
@@ -145,6 +151,7 @@ class BacktestStabilityAnalyzer:
             )
             if value is not None
         ]
+        clv_ci = cls._bootstrap_mean_ci(clv_values)
         return StabilitySliceMetrics(
             label=label,
             bets=len(rows),
@@ -156,7 +163,56 @@ class BacktestStabilityAnalyzer:
             max_drawdown=cls._max_drawdown([row.bet.profit_loss or 0.0 for row in rows]),
             avg_clv_pct=(sum(clv_values) / len(clv_values)) if clv_values else None,
             clv_count=len(clv_values),
+            roi_ci_low_pct=roi_ci[0],
+            roi_ci_high_pct=roi_ci[1],
+            clv_ci_low_pct=clv_ci[0],
+            clv_ci_high_pct=clv_ci[1],
         )
+
+
+    @staticmethod
+    def _bootstrap_roi_ci(
+        profit_stake_pairs: list[tuple[float, float]],
+        *,
+        samples: int = 500,
+        seed: int = 17,
+    ) -> tuple[float | None, float | None]:
+        valid = [(profit, stake) for profit, stake in profit_stake_pairs if stake > 0]
+        if not valid:
+            return None, None
+        rng = random.Random(seed)
+        estimates: list[float] = []
+        for _ in range(samples):
+            picked = [valid[rng.randrange(len(valid))] for _ in valid]
+            stake_sum = sum(stake for _profit, stake in picked)
+            if stake_sum > 0:
+                estimates.append((sum(profit for profit, _stake in picked) / stake_sum) * 100.0)
+        return BacktestStabilityAnalyzer._percentile_interval(estimates)
+
+    @staticmethod
+    def _bootstrap_mean_ci(
+        values: list[float],
+        *,
+        samples: int = 500,
+        seed: int = 23,
+    ) -> tuple[float | None, float | None]:
+        if not values:
+            return None, None
+        rng = random.Random(seed)
+        estimates = [
+            sum(values[rng.randrange(len(values))] for _ in values) / len(values)
+            for _ in range(samples)
+        ]
+        return BacktestStabilityAnalyzer._percentile_interval(estimates)
+
+    @staticmethod
+    def _percentile_interval(values: list[float]) -> tuple[float | None, float | None]:
+        if not values:
+            return None, None
+        ordered = sorted(values)
+        low_index = int(0.025 * (len(ordered) - 1))
+        high_index = int(0.975 * (len(ordered) - 1))
+        return ordered[low_index], ordered[high_index]
 
     @staticmethod
     def _max_drawdown(profit_loss_sequence: list[float]) -> float:

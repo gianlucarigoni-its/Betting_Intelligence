@@ -42,6 +42,7 @@ class HistoricalPoissonBacktestConfig:
     test_end_date: str = "2999-12-31"
     initial_bankroll: float = 1000.0
     flat_stake: float = 10.0
+    market_type: str = "1X2"
     min_edge_pct: float = 5.0
     max_edge_pct: float | None = 6.0
     min_model_probability: float = 0.55
@@ -59,6 +60,16 @@ class HistoricalPoissonBacktestConfig:
     away_min_model_probability: float | None = 0.58
     away_max_bookmaker_odds: float | None = 1.8
     allow_away_bets: bool = False
+    allow_over_bets: bool = False
+    allow_under_bets: bool = False
+    over_min_edge_pct: float = 4.0
+    over_max_edge_pct: float | None = 9.0
+    over_min_model_probability: float = 0.52
+    over_max_bookmaker_odds: float | None = 2.4
+    under_min_edge_pct: float = 4.0
+    under_max_edge_pct: float | None = 9.0
+    under_min_model_probability: float = 0.52
+    under_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
     recent_form_half_life_matches: float = 0.0
@@ -175,9 +186,10 @@ class HistoricalPoissonBacktester:
             if probabilities is None:
                 continue
 
-            odds_by_selection = self._load_odds(match.id, config.odds_snapshot_type)
-            if len(odds_by_selection) < 3:
+            odds_by_selection = self._load_odds(match.id, config.odds_snapshot_type, config.market_type)
+            if len(odds_by_selection) < 2:
                 continue
+            market_level, market_category = self._market_metadata(config.market_type)
 
             candidate = self._select_best_value_candidate(
                 probabilities=probabilities,
@@ -203,6 +215,16 @@ class HistoricalPoissonBacktester:
                 away_min_model_probability=config.away_min_model_probability,
                 away_max_bookmaker_odds=config.away_max_bookmaker_odds,
                 allow_away_bets=config.allow_away_bets,
+                allow_over_bets=config.allow_over_bets,
+                allow_under_bets=config.allow_under_bets,
+                over_min_edge_pct=config.over_min_edge_pct,
+                over_max_edge_pct=config.over_max_edge_pct,
+                over_min_model_probability=config.over_min_model_probability,
+                over_max_bookmaker_odds=config.over_max_bookmaker_odds,
+                under_min_edge_pct=config.under_min_edge_pct,
+                under_max_edge_pct=config.under_max_edge_pct,
+                under_min_model_probability=config.under_min_model_probability,
+                under_max_bookmaker_odds=config.under_max_bookmaker_odds,
                 league_name=competition.name,
                 selection_meta_model=selection_meta_model,
             )
@@ -234,9 +256,9 @@ class HistoricalPoissonBacktester:
                         backtest_run_id=run.id,
                         match_id=match.id,
                         bookmaker_id=odds_snapshot.bookmaker_id,
-                        market_level=1,
-                        market_type="1X2",
-                        market_category="match_result",
+                        market_level=market_level,
+                        market_type=config.market_type,
+                        market_category=market_category,
                         selection=sel,
                         model_probability=model_prob,
                         bookmaker_probability=(
@@ -487,6 +509,16 @@ class HistoricalPoissonBacktester:
         away_min_model_probability: float | None,
         away_max_bookmaker_odds: float | None,
         allow_away_bets: bool,
+        allow_over_bets: bool,
+        allow_under_bets: bool,
+        over_min_edge_pct: float,
+        over_max_edge_pct: float | None,
+        over_min_model_probability: float,
+        over_max_bookmaker_odds: float | None,
+        under_min_edge_pct: float,
+        under_max_edge_pct: float | None,
+        under_min_model_probability: float,
+        under_max_bookmaker_odds: float | None,
     ) -> dict[str, float | bool | None]:
         if selection == "HOME":
             return {
@@ -511,6 +543,32 @@ class HistoricalPoissonBacktester:
                 "min_form_goal_diff_delta": None,
                 "max_lambda_gap": draw_max_lambda_gap,
                 "max_abs_form_goal_diff_delta": draw_max_abs_form_goal_diff_delta,
+                "min_model_probability_override": None,
+                "max_odds_override": None,
+            }
+        if selection == "OVER_2_5":
+            return {
+                "enabled": allow_over_bets,
+                "min_edge_pct": over_min_edge_pct,
+                "max_edge_pct": over_max_edge_pct,
+                "min_model_probability": over_min_model_probability,
+                "max_odds": over_max_bookmaker_odds,
+                "min_form_goal_diff_delta": None,
+                "max_lambda_gap": None,
+                "max_abs_form_goal_diff_delta": None,
+                "min_model_probability_override": None,
+                "max_odds_override": None,
+            }
+        if selection == "UNDER_2_5":
+            return {
+                "enabled": allow_under_bets,
+                "min_edge_pct": under_min_edge_pct,
+                "max_edge_pct": under_max_edge_pct,
+                "min_model_probability": under_min_model_probability,
+                "max_odds": under_max_bookmaker_odds,
+                "min_form_goal_diff_delta": None,
+                "max_lambda_gap": None,
+                "max_abs_form_goal_diff_delta": None,
                 "min_model_probability_override": None,
                 "max_odds_override": None,
             }
@@ -601,13 +659,14 @@ class HistoricalPoissonBacktester:
         self,
         match_id: int,
         snapshot_type: str,
+        market_type: str,
     ) -> dict[str, HistoricalOddSnapshot]:
         if snapshot_type not in {"opening", "closing"}:
             raise ValueError("odds_snapshot_type must be 'opening' or 'closing'")
 
         query = self._session.query(HistoricalOddSnapshot).filter(
             HistoricalOddSnapshot.match_id == match_id,
-            HistoricalOddSnapshot.market_type == "1X2",
+            HistoricalOddSnapshot.market_type == market_type,
         )
         if snapshot_type == "opening":
             query = query.filter(HistoricalOddSnapshot.is_opening.is_(True))
@@ -617,7 +676,7 @@ class HistoricalPoissonBacktester:
         return {item.selection: item for item in query.all()}
 
     def _load_closing_odds(self, match_id: int) -> dict[str, HistoricalOddSnapshot]:
-        return self._load_odds(match_id, "closing")
+        return self._load_odds(match_id, "closing", "1X2")
 
     def _select_best_value_candidate(
         self,
@@ -641,6 +700,16 @@ class HistoricalPoissonBacktester:
         away_min_model_probability: float | None,
         away_max_bookmaker_odds: float | None,
         allow_away_bets: bool,
+        allow_over_bets: bool,
+        allow_under_bets: bool,
+        over_min_edge_pct: float,
+        over_max_edge_pct: float | None,
+        over_min_model_probability: float,
+        over_max_bookmaker_odds: float | None,
+        under_min_edge_pct: float,
+        under_max_edge_pct: float | None,
+        under_min_model_probability: float,
+        under_max_bookmaker_odds: float | None,
         league_name: str = "unknown",
         selection_meta_model: SelectionMetaModel | None = None,
     ) -> tuple[str, HistoricalOddSnapshot, float, float, float] | None:
@@ -668,6 +737,16 @@ class HistoricalPoissonBacktester:
                 away_min_model_probability=away_min_model_probability,
                 away_max_bookmaker_odds=away_max_bookmaker_odds,
                 allow_away_bets=allow_away_bets,
+                allow_over_bets=allow_over_bets,
+                allow_under_bets=allow_under_bets,
+                over_min_edge_pct=over_min_edge_pct,
+                over_max_edge_pct=over_max_edge_pct,
+                over_min_model_probability=over_min_model_probability,
+                over_max_bookmaker_odds=over_max_bookmaker_odds,
+                under_min_edge_pct=under_min_edge_pct,
+                under_max_edge_pct=under_max_edge_pct,
+                under_min_model_probability=under_min_model_probability,
+                under_max_bookmaker_odds=under_max_bookmaker_odds,
             )
             if not policy["enabled"]:
                 continue
@@ -733,6 +812,15 @@ class HistoricalPoissonBacktester:
             return max(candidates, key=lambda item: item[2])
         return max(candidates, key=lambda item: (item[4], item[2]))
 
+    @staticmethod
+    def _market_metadata(market_type: str) -> tuple[int, str]:
+        if market_type == "1X2":
+            return 1, "match_result"
+        if market_type == "OU_2_5":
+            return 2, "totals"
+        if market_type == "BTTS":
+            return 3, "both_teams_to_score"
+        raise ValueError(f"Unsupported market_type: {market_type}")
 
     @staticmethod
     def _recent_goal_difference(

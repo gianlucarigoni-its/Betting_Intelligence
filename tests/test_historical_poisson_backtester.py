@@ -17,6 +17,23 @@ from models.historical_elo import PreMatchEloRating
 from historical.football_data_importer import FootballDataImportConfig, FootballDataImporter
 
 
+
+
+def _ou_policy_kwargs() -> dict[str, object]:
+    return {
+        "allow_over_bets": False,
+        "allow_under_bets": False,
+        "over_min_edge_pct": 4.0,
+        "over_max_edge_pct": 9.0,
+        "over_min_model_probability": 0.52,
+        "over_max_bookmaker_odds": 2.4,
+        "under_min_edge_pct": 4.0,
+        "under_max_edge_pct": 9.0,
+        "under_min_model_probability": 0.52,
+        "under_max_bookmaker_odds": 2.4,
+    }
+
+
 def build_session():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -109,6 +126,7 @@ def test_historical_poisson_backtester_applies_away_specific_filters() -> None:
         away_min_model_probability=0.58,
         away_max_bookmaker_odds=1.8,
         allow_away_bets=False,
+        **_ou_policy_kwargs(),
     )
 
     assert candidate is not None
@@ -150,6 +168,7 @@ def test_historical_poisson_backtester_disables_away_by_default() -> None:
         away_min_model_probability=0.58,
         away_max_bookmaker_odds=1.8,
         allow_away_bets=False,
+        **_ou_policy_kwargs(),
     )
 
     assert candidate is not None
@@ -191,6 +210,7 @@ def test_historical_poisson_backtester_can_select_draw_when_balanced() -> None:
         away_min_model_probability=0.58,
         away_max_bookmaker_odds=1.8,
         allow_away_bets=False,
+        **_ou_policy_kwargs(),
     )
 
     assert candidate is not None
@@ -299,8 +319,62 @@ def test_meta_model_can_gate_otherwise_valid_home_candidate() -> None:
         away_min_model_probability=0.58,
         away_max_bookmaker_odds=1.8,
         allow_away_bets=False,
+        **_ou_policy_kwargs(),
         league_name="Test League",
         selection_meta_model=RejectHomeModel(),
     )
 
     assert candidate is None
+
+
+def test_historical_poisson_backtester_can_select_over_25_when_enabled() -> None:
+    session = build_session()
+    backtester = HistoricalPoissonBacktester(session)
+    selector = backtester._select_best_value_candidate  # type: ignore[attr-defined]
+
+    fake_probabilities = SimpleNamespace(
+        home=0.45, draw=0.24, away=0.31,
+        lambda_home=1.7, lambda_away=1.2, form_goal_diff_delta=0.0,
+        over_25=0.58, under_25=0.42,
+    )
+    odds_by_selection = {
+        "OVER_2_5": SimpleNamespace(selection="OVER_2_5", odd_value=1.95, bookmaker_id=1),
+        "UNDER_2_5": SimpleNamespace(selection="UNDER_2_5", odd_value=1.95, bookmaker_id=2),
+    }
+
+    kwargs = _ou_policy_kwargs()
+    kwargs.update({
+        "allow_over_bets": True,
+        "over_min_edge_pct": 5.0,
+        "over_max_edge_pct": 12.0,
+        "over_min_model_probability": 0.55,
+    })
+    candidate = selector(
+        probabilities=fake_probabilities,
+        odds_by_selection=odds_by_selection,
+        min_edge_pct=5.0,
+        max_edge_pct=6.0,
+        min_model_probability=0.55,
+        max_bookmaker_odds=1.8,
+        allow_home_bets=False,
+        allow_draw_bets=False,
+        home_min_form_goal_diff_delta=None,
+        draw_min_edge_pct=4.0,
+        draw_max_edge_pct=9.0,
+        draw_min_model_probability=0.24,
+        draw_max_bookmaker_odds=4.2,
+        draw_max_lambda_gap=0.25,
+        draw_max_abs_form_goal_diff_delta=0.35,
+        away_min_edge_pct=99.0,
+        away_min_model_probability=0.58,
+        away_max_bookmaker_odds=1.8,
+        allow_away_bets=False,
+        **kwargs,
+    )
+
+    assert candidate is not None
+    assert candidate[0] == "OVER_2_5"
+
+
+def test_historical_poisson_backtester_market_metadata_for_ou25() -> None:
+    assert HistoricalPoissonBacktester._market_metadata("OU_2_5") == (2, "totals")

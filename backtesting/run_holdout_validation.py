@@ -198,8 +198,6 @@ def _phase_backtest(
                     elo_home_advantage=defaults.elo_home_advantage,
                     elo_season_regression=defaults.elo_season_regression,
                     elo_lambda_weight=defaults.elo_lambda_weight,
-                    selection_meta_model_path=defaults.selection_meta_model_path,
-                    odds_snapshot_type=defaults.odds_snapshot_type,
                 )
 
                 backtester = HistoricalPoissonBacktester(session)
