@@ -51,8 +51,9 @@ def test_label_for_strategy_can_target_positive_clv() -> None:
     closing = SimpleNamespace(odd_value=2.00)
     closing_odds = {(10, "OU_2_5", "OVER_2_5", 1): closing}
 
-    assert _label_for_strategy(bet, closing_odds, "clv_positive") == 1
-    assert _label_for_strategy(bet, closing_odds, "win_and_clv_positive") == 0
+    assert _label_for_strategy(bet, closing_odds, "clv_positive", clv_threshold_pct=0.0) == 1
+    assert _label_for_strategy(bet, closing_odds, "clv_positive", clv_threshold_pct=5.5) == 0
+    assert _label_for_strategy(bet, closing_odds, "win_and_clv_positive", clv_threshold_pct=0.0) == 0
 
 
 def test_sample_builder_label_override_sets_supervised_target() -> None:
@@ -103,8 +104,24 @@ def test_combined_probability_supports_mean_and_min() -> None:
     row = (bet, None, competition, "opening")
     closing_odds = {(10, "OU_2_5", "OVER_2_5", 1): SimpleNamespace(odd_value=1.90)}
 
-    mean_score = _combined_probability(row, closing_odds, FakeModel(0.70), FakeModel(0.50), "win", dual_combination="mean")
-    min_score = _combined_probability(row, closing_odds, FakeModel(0.70), FakeModel(0.50), "win", dual_combination="min")
+    mean_score = _combined_probability(
+        row,
+        closing_odds,
+        FakeModel(0.70),
+        FakeModel(0.50),
+        "win",
+        clv_threshold_pct=0.0,
+        dual_combination="mean",
+    )
+    min_score = _combined_probability(
+        row,
+        closing_odds,
+        FakeModel(0.70),
+        FakeModel(0.50),
+        "win",
+        clv_threshold_pct=0.0,
+        dual_combination="min",
+    )
 
     assert mean_score == 0.60
     assert min_score == 0.50

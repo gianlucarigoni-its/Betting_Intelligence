@@ -154,11 +154,13 @@ def _label_for_strategy(
     bet: BacktestBet,
     closing_odds: ClosingOddsMap,
     strategy: str,
+    *,
+    clv_threshold_pct: float,
 ) -> int:
     if strategy == "win":
         return 1 if bet.result == "won" else 0
     clv_pct = BacktestStabilityAnalyzer._clv_pct(bet, closing_odds)
-    clv_positive = clv_pct is not None and clv_pct > 0.0
+    clv_positive = clv_pct is not None and clv_pct >= clv_threshold_pct
     if strategy == "clv_positive":
         return 1 if clv_positive else 0
     if strategy == "win_and_clv_positive":
@@ -170,13 +172,20 @@ def _sample_for_row(
     row: WalkforwardRow,
     closing_odds: ClosingOddsMap,
     label_strategy: str,
+    *,
+    clv_threshold_pct: float,
 ):
     bet, _match, competition, snapshot_type = row
     return build_selection_meta_model_sample(
         bet,
         competition.name,
         odds_snapshot_type=snapshot_type,
-        label_override=_label_for_strategy(bet, closing_odds, label_strategy),
+        label_override=_label_for_strategy(
+            bet,
+            closing_odds,
+            label_strategy,
+            clv_threshold_pct=clv_threshold_pct,
+        ),
     )
 
 
@@ -185,15 +194,22 @@ def _train_models(
     closing_odds: ClosingOddsMap,
     label_strategy: str,
     *,
+    clv_threshold_pct: float,
     use_dual_model: bool,
 ):
-    primary_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in rows]
+    primary_samples = [
+        _sample_for_row(row, closing_odds, label_strategy, clv_threshold_pct=clv_threshold_pct)
+        for row in rows
+    ]
     if not primary_samples:
         raise ValueError("selection meta-model training requires samples")
     primary_model = SelectionMetaModel.train(primary_samples)
     if not use_dual_model:
         return primary_model, None
-    secondary_samples = [_sample_for_row(row, closing_odds, "clv_positive") for row in rows]
+    secondary_samples = [
+        _sample_for_row(row, closing_odds, "clv_positive", clv_threshold_pct=clv_threshold_pct)
+        for row in rows
+    ]
     if not secondary_samples:
         raise ValueError("selection meta-model training requires samples")
     secondary_model = SelectionMetaModel.train(secondary_samples)
@@ -207,14 +223,25 @@ def _combined_probability(
     secondary_model: SelectionMetaModel | None,
     label_strategy: str,
     *,
+    clv_threshold_pct: float,
     dual_combination: str,
 ) -> float:
-    sample = _sample_for_row(row, closing_odds, label_strategy)
+    sample = _sample_for_row(
+        row,
+        closing_odds,
+        label_strategy,
+        clv_threshold_pct=clv_threshold_pct,
+    )
     primary_probability = primary_model.predict_probability(sample)
     if secondary_model is None:
         return primary_probability
     secondary_probability = secondary_model.predict_probability(
-        _sample_for_row(row, closing_odds, "clv_positive")
+        _sample_for_row(
+            row,
+            closing_odds,
+            "clv_positive",
+            clv_threshold_pct=clv_threshold_pct,
+        )
     )
     if dual_combination == "min":
         return min(primary_probability, secondary_probability)
@@ -253,8 +280,14 @@ def _aggregate_threshold_summary(
         if not inner_train_rows or not inner_eval_rows:
             continue
 
-        train_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in inner_train_rows]
-        eval_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in inner_eval_rows]
+        train_samples = [
+            _sample_for_row(row, closing_odds, label_strategy, clv_threshold_pct=clv_threshold_pct)
+            for row in inner_train_rows
+        ]
+        eval_samples = [
+            _sample_for_row(row, closing_odds, label_strategy, clv_threshold_pct=clv_threshold_pct)
+            for row in inner_eval_rows
+        ]
         if not train_samples or not eval_samples:
             continue
 
@@ -277,6 +310,7 @@ def _aggregate_threshold_summary(
                     primary_model,
                     secondary_model,
                     label_strategy,
+                    clv_threshold_pct=clv_threshold_pct,
                     dual_combination=dual_combination,
                 ),
                 row[0],
@@ -355,6 +389,7 @@ def _select_threshold(
             min_inner_train_seasons=min_inner_train_seasons,
             label_strategy=label_strategy,
             objective=objective,
+            clv_threshold_pct=clv_threshold_pct,
             use_dual_model=use_dual_model,
             dual_combination=dual_combination,
         )
@@ -377,6 +412,7 @@ def _evaluate_outer_fold(
     closing_odds: ClosingOddsMap,
     label_strategy: str,
     objective: str,
+    clv_threshold_pct: float,
     use_dual_model: bool,
     dual_combination: str,
 ) -> tuple[NestedFoldMetrics, list[BacktestBet]] | None:
@@ -385,8 +421,14 @@ def _evaluate_outer_fold(
     if not train_rows or not holdout_rows:
         return None
 
-    train_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in train_rows]
-    holdout_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in holdout_rows]
+    train_samples = [
+        _sample_for_row(row, closing_odds, label_strategy, clv_threshold_pct=clv_threshold_pct)
+        for row in train_rows
+    ]
+    holdout_samples = [
+        _sample_for_row(row, closing_odds, label_strategy, clv_threshold_pct=clv_threshold_pct)
+        for row in holdout_rows
+    ]
     if not train_samples or not holdout_samples:
         return None
 
@@ -480,6 +522,7 @@ def main() -> None:
             min_meta_bets=args.min_meta_bets,
             label_strategy=args.label_strategy,
             objective=args.selection_objective,
+            clv_threshold_pct=args.clv_threshold_pct,
             use_dual_model=args.use_dual_model,
             dual_combination=args.dual_combination,
         )
@@ -491,6 +534,7 @@ def main() -> None:
             closing_odds,
             args.label_strategy,
             args.selection_objective,
+            args.clv_threshold_pct,
             args.use_dual_model,
             args.dual_combination,
         )
@@ -561,7 +605,15 @@ def main() -> None:
             print(f"- {failure}")
 
     if args.output_model:
-        final_samples = [_sample_for_row(row, closing_odds, args.label_strategy) for row in rows]
+        final_samples = [
+            _sample_for_row(
+                row,
+                closing_odds,
+                args.label_strategy,
+                clv_threshold_pct=args.clv_threshold_pct,
+            )
+            for row in rows
+        ]
         if final_samples:
             model = SelectionMetaModel.train(final_samples)
             model.save(Path(args.output_model))
