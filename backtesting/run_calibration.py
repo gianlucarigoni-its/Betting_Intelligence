@@ -69,6 +69,8 @@ class BacktestDefaults:
     allow_away_bets: bool = False
     allow_over_bets: bool = False
     allow_under_bets: bool = False
+    allow_btts_yes_bets: bool = False
+    allow_btts_no_bets: bool = False
     over_min_edge_pct: float = 4.0
     over_max_edge_pct: float | None = 9.0
     over_min_model_probability: float = 0.52
@@ -77,6 +79,14 @@ class BacktestDefaults:
     under_max_edge_pct: float | None = 9.0
     under_min_model_probability: float = 0.52
     under_max_bookmaker_odds: float | None = 2.4
+    btts_yes_min_edge_pct: float = 4.0
+    btts_yes_max_edge_pct: float | None = 9.0
+    btts_yes_min_model_probability: float = 0.52
+    btts_yes_max_bookmaker_odds: float | None = 2.2
+    btts_no_min_edge_pct: float = 4.0
+    btts_no_max_edge_pct: float | None = 9.0
+    btts_no_min_model_probability: float = 0.52
+    btts_no_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
     recent_form_half_life_matches: float = 0.0
@@ -212,6 +222,8 @@ def _phase_backtest(
                     allow_away_bets=defaults.allow_away_bets,
                     allow_over_bets=defaults.allow_over_bets,
                     allow_under_bets=defaults.allow_under_bets,
+                    allow_btts_yes_bets=defaults.allow_btts_yes_bets,
+                    allow_btts_no_bets=defaults.allow_btts_no_bets,
                     over_min_edge_pct=defaults.over_min_edge_pct,
                     over_max_edge_pct=defaults.over_max_edge_pct,
                     over_min_model_probability=defaults.over_min_model_probability,
@@ -220,6 +232,14 @@ def _phase_backtest(
                     under_max_edge_pct=defaults.under_max_edge_pct,
                     under_min_model_probability=defaults.under_min_model_probability,
                     under_max_bookmaker_odds=defaults.under_max_bookmaker_odds,
+                    btts_yes_min_edge_pct=defaults.btts_yes_min_edge_pct,
+                    btts_yes_max_edge_pct=defaults.btts_yes_max_edge_pct,
+                    btts_yes_min_model_probability=defaults.btts_yes_min_model_probability,
+                    btts_yes_max_bookmaker_odds=defaults.btts_yes_max_bookmaker_odds,
+                    btts_no_min_edge_pct=defaults.btts_no_min_edge_pct,
+                    btts_no_max_edge_pct=defaults.btts_no_max_edge_pct,
+                    btts_no_min_model_probability=defaults.btts_no_min_model_probability,
+                    btts_no_max_bookmaker_odds=defaults.btts_no_max_bookmaker_odds,
                     min_prior_matches=defaults.min_prior_matches,
                     shrinkage_matches=defaults.shrinkage_matches,
                     recent_form_half_life_matches=defaults.recent_form_half_life_matches,
@@ -271,6 +291,8 @@ def _phase_backtest(
                             allow_away_bets=effective.allow_away_bets,
                             allow_over_bets=effective.allow_over_bets,
                             allow_under_bets=effective.allow_under_bets,
+                            allow_btts_yes_bets=effective.allow_btts_yes_bets,
+                            allow_btts_no_bets=effective.allow_btts_no_bets,
                             over_min_edge_pct=effective.over_min_edge_pct,
                             over_max_edge_pct=effective.over_max_edge_pct,
                             over_min_model_probability=effective.over_min_model_probability,
@@ -367,7 +389,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--flat-stake", type=float, default=10.0)
     parser.add_argument(
         "--market-type",
-        choices=("1X2", "OU_2_5"),
+        choices=("1X2", "OU_2_5", "BTTS"),
         default="1X2",
         help="Mercato da backtestare.",
     )
@@ -395,6 +417,8 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Abilita la selezione UNDER_2_5 per il mercato O/U.",
     )
+    parser.add_argument("--allow-btts-yes-bets", action="store_true")
+    parser.add_argument("--allow-btts-no-bets", action="store_true")
     parser.add_argument("--over-min-edge-pct", type=float, default=4.0)
     parser.add_argument("--over-max-edge-pct", type=float, default=9.0)
     parser.add_argument("--over-min-model-probability", type=float, default=0.52)
@@ -403,6 +427,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--under-max-edge-pct", type=float, default=9.0)
     parser.add_argument("--under-min-model-probability", type=float, default=0.52)
     parser.add_argument("--under-max-bookmaker-odds", type=float, default=2.4)
+    parser.add_argument("--btts-yes-min-edge-pct", type=float, default=4.0)
+    parser.add_argument("--btts-yes-max-edge-pct", type=float, default=9.0)
+    parser.add_argument("--btts-yes-min-model-probability", type=float, default=0.52)
+    parser.add_argument("--btts-yes-max-bookmaker-odds", type=float, default=2.2)
+    parser.add_argument("--btts-no-min-edge-pct", type=float, default=4.0)
+    parser.add_argument("--btts-no-max-edge-pct", type=float, default=9.0)
+    parser.add_argument("--btts-no-min-model-probability", type=float, default=0.52)
+    parser.add_argument("--btts-no-max-bookmaker-odds", type=float, default=2.4)
     parser.add_argument("--min-prior-matches", type=int, default=5)
     parser.add_argument("--shrinkage-matches", type=int, default=10)
     parser.add_argument(
@@ -484,6 +516,8 @@ def main() -> None:
         allow_away_bets=args.allow_away_bets,
         allow_over_bets=args.allow_over_bets,
         allow_under_bets=args.allow_under_bets,
+        allow_btts_yes_bets=args.allow_btts_yes_bets,
+        allow_btts_no_bets=args.allow_btts_no_bets,
         over_min_edge_pct=args.over_min_edge_pct,
         over_max_edge_pct=args.over_max_edge_pct,
         over_min_model_probability=args.over_min_model_probability,
@@ -492,6 +526,14 @@ def main() -> None:
         under_max_edge_pct=args.under_max_edge_pct,
         under_min_model_probability=args.under_min_model_probability,
         under_max_bookmaker_odds=args.under_max_bookmaker_odds,
+        btts_yes_min_edge_pct=args.btts_yes_min_edge_pct,
+        btts_yes_max_edge_pct=args.btts_yes_max_edge_pct,
+        btts_yes_min_model_probability=args.btts_yes_min_model_probability,
+        btts_yes_max_bookmaker_odds=args.btts_yes_max_bookmaker_odds,
+        btts_no_min_edge_pct=args.btts_no_min_edge_pct,
+        btts_no_max_edge_pct=args.btts_no_max_edge_pct,
+        btts_no_min_model_probability=args.btts_no_min_model_probability,
+        btts_no_max_bookmaker_odds=args.btts_no_max_bookmaker_odds,
         min_prior_matches=args.min_prior_matches,
         shrinkage_matches=args.shrinkage_matches,
         recent_form_half_life_matches=args.recent_form_half_life_matches,

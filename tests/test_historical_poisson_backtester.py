@@ -23,6 +23,8 @@ def _ou_policy_kwargs() -> dict[str, object]:
     return {
         "allow_over_bets": False,
         "allow_under_bets": False,
+        "allow_btts_yes_bets": False,
+        "allow_btts_no_bets": False,
         "over_min_edge_pct": 4.0,
         "over_max_edge_pct": 9.0,
         "over_min_model_probability": 0.52,
@@ -31,6 +33,14 @@ def _ou_policy_kwargs() -> dict[str, object]:
         "under_max_edge_pct": 9.0,
         "under_min_model_probability": 0.52,
         "under_max_bookmaker_odds": 2.4,
+        "btts_yes_min_edge_pct": 4.0,
+        "btts_yes_max_edge_pct": 9.0,
+        "btts_yes_min_model_probability": 0.52,
+        "btts_yes_max_bookmaker_odds": 2.2,
+        "btts_no_min_edge_pct": 4.0,
+        "btts_no_max_edge_pct": 9.0,
+        "btts_no_min_model_probability": 0.52,
+        "btts_no_max_bookmaker_odds": 2.4,
     }
 
 
@@ -374,6 +384,55 @@ def test_historical_poisson_backtester_can_select_over_25_when_enabled() -> None
 
     assert candidate is not None
     assert candidate[0] == "OVER_2_5"
+
+
+def test_historical_poisson_backtester_can_select_btts_yes_when_enabled() -> None:
+    session = build_session()
+    backtester = HistoricalPoissonBacktester(session)
+    selector = backtester._select_best_value_candidate  # type: ignore[attr-defined]
+
+    fake_probabilities = SimpleNamespace(
+        home=0.42, draw=0.25, away=0.33,
+        lambda_home=1.5, lambda_away=1.3, form_goal_diff_delta=0.0,
+        over_25=0.54, under_25=0.46, btts_yes=0.60, btts_no=0.40,
+    )
+    odds_by_selection = {
+        "BTTS_YES": SimpleNamespace(selection="BTTS_YES", odd_value=1.85, bookmaker_id=1),
+        "BTTS_NO": SimpleNamespace(selection="BTTS_NO", odd_value=2.05, bookmaker_id=2),
+    }
+
+    kwargs = _ou_policy_kwargs()
+    kwargs.update({
+        "allow_btts_yes_bets": True,
+        "btts_yes_min_edge_pct": 5.0,
+        "btts_yes_max_edge_pct": 12.0,
+        "btts_yes_min_model_probability": 0.58,
+    })
+    candidate = selector(
+        probabilities=fake_probabilities,
+        odds_by_selection=odds_by_selection,
+        min_edge_pct=5.0,
+        max_edge_pct=6.0,
+        min_model_probability=0.55,
+        max_bookmaker_odds=1.8,
+        allow_home_bets=False,
+        allow_draw_bets=False,
+        home_min_form_goal_diff_delta=None,
+        draw_min_edge_pct=4.0,
+        draw_max_edge_pct=9.0,
+        draw_min_model_probability=0.24,
+        draw_max_bookmaker_odds=4.2,
+        draw_max_lambda_gap=0.25,
+        draw_max_abs_form_goal_diff_delta=0.35,
+        away_min_edge_pct=99.0,
+        away_min_model_probability=0.58,
+        away_max_bookmaker_odds=1.8,
+        allow_away_bets=False,
+        **kwargs,
+    )
+
+    assert candidate is not None
+    assert candidate[0] == "BTTS_YES"
 
 
 def test_historical_poisson_backtester_market_metadata_for_ou25() -> None:

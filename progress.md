@@ -1890,3 +1890,32 @@ Decision:
 
 Report:
 - `reports/ou_clv_threshold_nested_report.md`
+
+
+---
+
+## Step 13 - BTTS Market Enablement
+
+Status: completed, tested, not yet competitive.
+
+Change:
+- Added BTTS support to `backtesting.historical_poisson_backtester`.
+- Added BTTS defaults to `BacktestDefaults`, `LeagueBettingPolicy`, and the calibration CLI.
+- Added unit coverage for BTTS selection.
+
+Validation:
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_historical_poisson_backtester.py -q -s`
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -s`
+- Opening BTTS calibration on `E0,D1,SP1,I1,F1` for seasons `1920,2021,2122,2223,2324`.
+
+Result:
+- The BTTS pipeline now runs end-to-end, but both opening-odds calibration attempts yielded `0` settled bets in every league-season run.
+- Capital readiness: FAIL because the market is not generating a usable signal on the current thresholds and dataset.
+
+Decision:
+- Keep BTTS support in the engine.
+- Do not promote BTTS as a production market yet.
+- Next cycle must diagnose why BTTS produces zero bets and either loosen the viable policy or drop the market if it cannot produce stable volume.
+
+Report:
+- `reports/btts_opening_market_enablement_report.md`

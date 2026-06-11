@@ -32,6 +32,8 @@ class LeagueBettingPolicy:
     allow_away_bets: bool = False
     allow_over_bets: bool = False
     allow_under_bets: bool = False
+    allow_btts_yes_bets: bool = False
+    allow_btts_no_bets: bool = False
     over_min_edge_pct: float = 4.0
     over_max_edge_pct: float | None = 9.0
     over_min_model_probability: float = 0.52
@@ -40,6 +42,14 @@ class LeagueBettingPolicy:
     under_max_edge_pct: float | None = 9.0
     under_min_model_probability: float = 0.52
     under_max_bookmaker_odds: float | None = 2.4
+    btts_yes_min_edge_pct: float = 4.0
+    btts_yes_max_edge_pct: float | None = 9.0
+    btts_yes_min_model_probability: float = 0.52
+    btts_yes_max_bookmaker_odds: float | None = 2.2
+    btts_no_min_edge_pct: float = 4.0
+    btts_no_max_edge_pct: float | None = 9.0
+    btts_no_min_model_probability: float = 0.52
+    btts_no_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
     recent_form_half_life_matches: float = 0.0

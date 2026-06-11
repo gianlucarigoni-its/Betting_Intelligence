@@ -62,6 +62,8 @@ class HistoricalPoissonBacktestConfig:
     allow_away_bets: bool = False
     allow_over_bets: bool = False
     allow_under_bets: bool = False
+    allow_btts_yes_bets: bool = False
+    allow_btts_no_bets: bool = False
     over_min_edge_pct: float = 4.0
     over_max_edge_pct: float | None = 9.0
     over_min_model_probability: float = 0.52
@@ -70,6 +72,14 @@ class HistoricalPoissonBacktestConfig:
     under_max_edge_pct: float | None = 9.0
     under_min_model_probability: float = 0.52
     under_max_bookmaker_odds: float | None = 2.4
+    btts_yes_min_edge_pct: float = 4.0
+    btts_yes_max_edge_pct: float | None = 9.0
+    btts_yes_min_model_probability: float = 0.52
+    btts_yes_max_bookmaker_odds: float | None = 2.2
+    btts_no_min_edge_pct: float = 4.0
+    btts_no_max_edge_pct: float | None = 9.0
+    btts_no_min_model_probability: float = 0.52
+    btts_no_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
     recent_form_half_life_matches: float = 0.0
@@ -217,6 +227,8 @@ class HistoricalPoissonBacktester:
                 allow_away_bets=config.allow_away_bets,
                 allow_over_bets=config.allow_over_bets,
                 allow_under_bets=config.allow_under_bets,
+                allow_btts_yes_bets=config.allow_btts_yes_bets,
+                allow_btts_no_bets=config.allow_btts_no_bets,
                 over_min_edge_pct=config.over_min_edge_pct,
                 over_max_edge_pct=config.over_max_edge_pct,
                 over_min_model_probability=config.over_min_model_probability,
@@ -225,6 +237,14 @@ class HistoricalPoissonBacktester:
                 under_max_edge_pct=config.under_max_edge_pct,
                 under_min_model_probability=config.under_min_model_probability,
                 under_max_bookmaker_odds=config.under_max_bookmaker_odds,
+                btts_yes_min_edge_pct=config.btts_yes_min_edge_pct,
+                btts_yes_max_edge_pct=config.btts_yes_max_edge_pct,
+                btts_yes_min_model_probability=config.btts_yes_min_model_probability,
+                btts_yes_max_bookmaker_odds=config.btts_yes_max_bookmaker_odds,
+                btts_no_min_edge_pct=config.btts_no_min_edge_pct,
+                btts_no_max_edge_pct=config.btts_no_max_edge_pct,
+                btts_no_min_model_probability=config.btts_no_min_model_probability,
+                btts_no_max_bookmaker_odds=config.btts_no_max_bookmaker_odds,
                 league_name=competition.name,
                 selection_meta_model=selection_meta_model,
             )
@@ -511,6 +531,8 @@ class HistoricalPoissonBacktester:
         allow_away_bets: bool,
         allow_over_bets: bool,
         allow_under_bets: bool,
+        allow_btts_yes_bets: bool,
+        allow_btts_no_bets: bool,
         over_min_edge_pct: float,
         over_max_edge_pct: float | None,
         over_min_model_probability: float,
@@ -519,6 +541,14 @@ class HistoricalPoissonBacktester:
         under_max_edge_pct: float | None,
         under_min_model_probability: float,
         under_max_bookmaker_odds: float | None,
+        btts_yes_min_edge_pct: float,
+        btts_yes_max_edge_pct: float | None,
+        btts_yes_min_model_probability: float,
+        btts_yes_max_bookmaker_odds: float | None,
+        btts_no_min_edge_pct: float,
+        btts_no_max_edge_pct: float | None,
+        btts_no_min_model_probability: float,
+        btts_no_max_bookmaker_odds: float | None,
     ) -> dict[str, float | bool | None]:
         if selection == "HOME":
             return {
@@ -566,6 +596,32 @@ class HistoricalPoissonBacktester:
                 "max_edge_pct": under_max_edge_pct,
                 "min_model_probability": under_min_model_probability,
                 "max_odds": under_max_bookmaker_odds,
+                "min_form_goal_diff_delta": None,
+                "max_lambda_gap": None,
+                "max_abs_form_goal_diff_delta": None,
+                "min_model_probability_override": None,
+                "max_odds_override": None,
+            }
+        if selection == "BTTS_YES":
+            return {
+                "enabled": allow_btts_yes_bets,
+                "min_edge_pct": btts_yes_min_edge_pct,
+                "max_edge_pct": btts_yes_max_edge_pct,
+                "min_model_probability": btts_yes_min_model_probability,
+                "max_odds": btts_yes_max_bookmaker_odds,
+                "min_form_goal_diff_delta": None,
+                "max_lambda_gap": None,
+                "max_abs_form_goal_diff_delta": None,
+                "min_model_probability_override": None,
+                "max_odds_override": None,
+            }
+        if selection == "BTTS_NO":
+            return {
+                "enabled": allow_btts_no_bets,
+                "min_edge_pct": btts_no_min_edge_pct,
+                "max_edge_pct": btts_no_max_edge_pct,
+                "min_model_probability": btts_no_min_model_probability,
+                "max_odds": btts_no_max_bookmaker_odds,
                 "min_form_goal_diff_delta": None,
                 "max_lambda_gap": None,
                 "max_abs_form_goal_diff_delta": None,
@@ -702,6 +758,8 @@ class HistoricalPoissonBacktester:
         allow_away_bets: bool,
         allow_over_bets: bool,
         allow_under_bets: bool,
+        allow_btts_yes_bets: bool,
+        allow_btts_no_bets: bool,
         over_min_edge_pct: float,
         over_max_edge_pct: float | None,
         over_min_model_probability: float,
@@ -710,6 +768,14 @@ class HistoricalPoissonBacktester:
         under_max_edge_pct: float | None,
         under_min_model_probability: float,
         under_max_bookmaker_odds: float | None,
+        btts_yes_min_edge_pct: float,
+        btts_yes_max_edge_pct: float | None,
+        btts_yes_min_model_probability: float,
+        btts_yes_max_bookmaker_odds: float | None,
+        btts_no_min_edge_pct: float,
+        btts_no_max_edge_pct: float | None,
+        btts_no_min_model_probability: float,
+        btts_no_max_bookmaker_odds: float | None,
         league_name: str = "unknown",
         selection_meta_model: SelectionMetaModel | None = None,
     ) -> tuple[str, HistoricalOddSnapshot, float, float, float] | None:
@@ -739,6 +805,8 @@ class HistoricalPoissonBacktester:
                 allow_away_bets=allow_away_bets,
                 allow_over_bets=allow_over_bets,
                 allow_under_bets=allow_under_bets,
+                allow_btts_yes_bets=allow_btts_yes_bets,
+                allow_btts_no_bets=allow_btts_no_bets,
                 over_min_edge_pct=over_min_edge_pct,
                 over_max_edge_pct=over_max_edge_pct,
                 over_min_model_probability=over_min_model_probability,
@@ -747,6 +815,14 @@ class HistoricalPoissonBacktester:
                 under_max_edge_pct=under_max_edge_pct,
                 under_min_model_probability=under_min_model_probability,
                 under_max_bookmaker_odds=under_max_bookmaker_odds,
+                btts_yes_min_edge_pct=btts_yes_min_edge_pct,
+                btts_yes_max_edge_pct=btts_yes_max_edge_pct,
+                btts_yes_min_model_probability=btts_yes_min_model_probability,
+                btts_yes_max_bookmaker_odds=btts_yes_max_bookmaker_odds,
+                btts_no_min_edge_pct=btts_no_min_edge_pct,
+                btts_no_max_edge_pct=btts_no_max_edge_pct,
+                btts_no_min_model_probability=btts_no_min_model_probability,
+                btts_no_max_bookmaker_odds=btts_no_max_bookmaker_odds,
             )
             if not policy["enabled"]:
                 continue
