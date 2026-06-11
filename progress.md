@@ -334,7 +334,7 @@ Non basta ancora per promuovere il motore a sistema betting competitivo: volume 
 Stato test:
 
 ```text
-76 passed
+78 passed
 ```
 
 ---
@@ -380,7 +380,56 @@ Il closing e' meno negativo dell'opening, ma nessuno dei due supera la soglia di
 Stato test:
 
 ```text
-76 passed
+78 passed
+```
+
+---
+
+## 4B. Step 7 chiuso - gate capitale reale
+
+Implementato e verificato:
+
+```text
+- Capital readiness gate con criteri minimi su volume, CLV count, ROI CI, CLV CI e drawdown.
+- CLI: backtesting.run_capital_readiness_report.
+- Test dedicati per pass/fail del gate.
+```
+
+Risultato 1X2 opening, run 265-314:
+
+```text
+CAPITAL_READINESS=FAIL
+bets=21
+roi=+39.00%
+roi_ci=[+9.14%, +64.33%]
+clv=+1.41%
+clv_ci=[-1.88%, +4.47%]
+failures: volume insufficiente, CLV CI low negativa
+```
+
+Risultato O/U 2.5 opening, run 340-389:
+
+```text
+CAPITAL_READINESS=FAIL
+bets=1756
+roi=-7.09%
+roi_ci=[-11.56%, -2.91%]
+clv=-0.34%
+clv_ci=[-0.62%, -0.04%]
+failures: ROI CI low negativa, CLV CI low negativa
+```
+
+Decisione:
+
+```text
+Il motore non e' pronto per capitale reale.
+Da ora ogni policy candidata deve passare il capital readiness gate prima di essere considerata live.
+```
+
+Stato test:
+
+```text
+78 passed
 ```
 
 ---
