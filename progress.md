@@ -264,20 +264,101 @@ Non sono ancora promossi come betting policy di default: servono reimport quote,
 
 ---
 
-## 4B. Report finale
+## 4B. Step 5 chiuso - opening/closing, CLV e meta walk-forward
 
-Report creato:
+Implementato e verificato:
+
+```text
+- Reimport completo Football-Data su 50 combinazioni lega/stagione.
+- Opening odds e true closing odds Bet365 separate e aggiornate in modo idempotente.
+- Vecchie closing odds importate da B365H/B365D/B365A corrette con B365CH/B365CD/B365CA quando disponibili.
+- Quote non valide <= 1.0 scartate senza bloccare l'import dei match.
+- Backtest opening odds su run 265-314.
+- Backtest closing odds su run 315-339.
+- CLV calcolato come opening_odds / closing_odds - 1.
+- Walk-forward del selection meta-model su piu' stagioni opening.
+- Modello finale opening salvato in config/selection_meta_opening.pkl.
+```
+
+Dati reimportati:
+
+```text
+Batch reimport: 50/50 successi
+Existing odds aggiornate a true closing: 25,667
+1X2 opening odds: 26,850
+1X2 closing odds: 54,249
+OU_2_5 opening odds: 17,892
+OU_2_5 closing odds: 17,906
+BTTS odds: 0 (colonne non presenti nei CSV disponibili)
+```
+
+Opening odds backtest, run 265-314:
+
+```text
+bets: 21
+hit rate: 0.810
+ROI: +39.00%
+P&L: +81.90
+max drawdown: 10.00
+avg CLV: +1.41%
+selection: HOME only
+```
+
+Closing odds backtest, run 315-339:
+
+```text
+bets: 17
+hit rate: 0.706
+ROI: +20.59%
+P&L: +35.00
+max drawdown: 20.50
+avg CLV: 0.00% (closing-vs-closing)
+selection: HOME only
+```
+
+Meta-model walk-forward opening:
+
+```text
+min_train_seasons=3: 2 folds, 15 baseline bets, 15 meta bets, ROI +38.93%, P&L +58.40
+min_train_seasons=2: 3 folds, 18 baseline bets, 18 meta bets, ROI +42.72%, P&L +76.90
+Brier holdout range: 0.2106 - 0.2168
+```
+
+Decisione:
+
+```text
+Il segnale opening e' migliore del closing e mostra CLV medio positivo, quindi la prova e' interessante.
+Non basta ancora per promuovere il motore a sistema betting competitivo: volume molto basso, solo HOME, CLV non stabile in tutte le stagioni e meta-model senza uplift sulle bet selezionate.
+```
+
+Stato test:
+
+```text
+72 passed
+```
+
+---
+
+## 4B. Report aggiornato
+
+Report principale:
 
 ```text
 reports/phase4b_betting_engine_report.md
 ```
 
+Report della prova decisiva opening/CLV/meta:
+
+```text
+reports/opening_clv_meta_walkforward_report.md
+```
+
 Sintesi:
 
 ```text
-Il progetto e' piu' forte come ricerca/backtesting engine.
-Non e' ancora provato come betting engine competitivo.
-La prossima prova decisiva e' opening odds + CLV + walk-forward meta-model su 10 stagioni.
+Il progetto e' piu' forte come ricerca/backtesting engine e ora ha una prima evidenza positiva su opening odds e CLV.
+Non e' ancora provato come betting engine competitivo per capitale reale.
+La prossima fase deve aumentare volume e robustezza, soprattutto su O/U 2.5 e BTTS, e rendere il meta-model realmente selettivo.
 ```
 
 ---

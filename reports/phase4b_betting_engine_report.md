@@ -1,16 +1,21 @@
 # Phase 4B Betting Engine Report
 
 Date: 2026-06-11
+Project path: /home/rigoni_g/Personal/Betting_Intelligence
 
 ## Executive Summary
 
-The engine is materially stronger than the previous threshold-only phase: it now has historical pre-match ELO, robust 5/10-match form features, an optional selection meta-model, explicit HOME/DRAW/AWAY selection policies, opening-vs-closing support, stability/CLV diagnostics, and Poisson probabilities for Over/Under 2.5 and BTTS.
+Phase 4B improved the engine from threshold tuning toward probabilistic signal evaluation. The project now has historical pre-match ELO, robust form features, a selection meta-model, explicit HOME/DRAW/AWAY policies, opening-vs-closing odds support, CLV diagnostics, and Poisson probabilities for O/U 2.5 and BTTS.
 
-The betting engine is not yet market-competitive as a production betting system. It is a research/backtesting engine with better signal instrumentation. The current profitable slices are low-volume and fragile, and the existing database still has only closing odds, so CLV is not yet informative.
+After the decisive reimport and validation, the engine shows a promising but still unproven opening-price signal. Opening 1X2 HOME bets produced positive ROI and positive average CLV, but the sample is very small and the meta-model did not improve selection yet.
 
-## Implemented Changes
+Detailed validation report:
 
-Commits completed in this phase:
+```text
+reports/opening_clv_meta_walkforward_report.md
+```
+
+## Implemented Commits In This Phase
 
 ```text
 ac2d8d7 docs: plan probabilistic signal improvement phase
@@ -18,317 +23,171 @@ c1132ae feat: add historical elo and robust form features
 69793eb feat: add selection meta model gate
 ad4c8f7 feat: add opening odds and stability diagnostics
 8f243f3 feat: add poisson over under and btts markets
+503d768 docs: add phase 4b betting engine report
 ```
 
-### 1. Historical ELO
+Additional commits for the decisive validation are listed in git history after this report update.
 
-Implemented leakage-safe pre-match ELO reconstruction:
+## Current Engine State
 
 ```text
-- chronological update after each match
-- home/away rating before match
-- elo_diff available per prediction
-- optional ELO lambda correction
-- season regression toward mean
+Historical ELO pre-match: implemented
+Robust 5/10 match form: implemented
+Selection meta-model: implemented, not promoted as active default
+HOME/DRAW/AWAY separate policy: implemented
+Opening/closing odds: implemented and reimported
+CLV stability report: implemented
+O/U 2.5 probabilities and odds import: implemented
+BTTS probabilities: implemented
+BTTS odds import: supported but current CSVs provide no usable rows
 ```
 
-Default remains neutral:
+## Decisive Validation Results
+
+Opening odds backtest, runs 265-314:
 
 ```text
-elo_lambda_weight = 0.0
-```
-
-Reason: ELO correction is implemented but not yet walk-forward promoted.
-
-### 2. Robust Form Features
-
-Added pre-match form features from previous matches only:
-
-```text
-- 5-match and 10-match windows
-- points per match
-- goal difference per match
-- goals for/conceded
-- clean sheet rate
-- conceded trend
-- venue-aware expected strength
-```
-
-These are persisted in backtest reason strings and available to the meta-model.
-
-### 3. Selection Meta-Model
-
-Added a lightweight logistic-regression selector above Poisson predictions.
-
-Inputs:
-
-```text
-selection
-league
-edge_pct
-bookmaker_odds
-model_probability
-bookmaker_probability
-model_market_distance
-lambda_home
-lambda_away
-lambda_gap
-```
-
-New CLI:
-
-```bash
-python -m backtesting.run_selection_meta_training --runs 210-259 --output config/selection_meta_model.pkl
-```
-
-The backtester can use it with:
-
-```bash
-python -m backtesting.run_calibration --selection-meta-model-path config/selection_meta_model.pkl
-```
-
-Current status: available but not default.
-
-### 4. Separate Selection Policy
-
-HOME, DRAW and AWAY are now evaluated through explicit selection-specific gates inside the backtester.
-
-Current policy state:
-
-```text
-HOME: active under tuned policy
-DRAW: supported but not promoted
-AWAY: disabled by default
-```
-
-AWAY should only be reopened with dedicated thresholds and walk-forward proof.
-
-### 5. Opening vs Closing Odds and CLV
-
-Importer now separates opening and closing odds when Football-Data provides Bet365 closing columns:
-
-```text
-Opening: B365H / B365D / B365A
-Closing: B365CH / B365CD / B365CA
-```
-
-Backtester supports:
-
-```bash
---odds-snapshot-type opening
---odds-snapshot-type closing
-```
-
-New stability report:
-
-```bash
-python -m backtesting.run_stability_report --runs 260-264 --min-bets 1
-```
-
-Important data status:
-
-```text
-Current DB has 1X2 closing odds only.
-Opening odds count: 0
-Closing odds count: 54,237
-```
-
-Therefore CLV is currently 0.00% because the historical DB has not yet been reimported with opening/closing separation.
-
-### 6. Stability Diagnostics
-
-The stability report now exposes:
-
-```text
-ROI
-hit rate
-profit/loss
-max drawdown
-average CLV
-bets per season
-bets per league
-bets per selection
-```
-
-Recent DB metrics:
-
-Holdout 2023/24 runs 260-264:
-
-```text
-bets: 6
-hit rate: 0.667
-ROI: +20.50%
-P&L: +12.30
+bets: 21
+hit rate: 0.810
+ROI: +39.00%
+P&L: +81.90
 max drawdown: 10.00
-CLV: 0.00% (opening odds unavailable)
+avg CLV: +1.41%
+selection: HOME only
 ```
 
-Recent walk-forward block 210-259:
+Closing odds backtest, runs 315-339:
 
 ```text
-bets: 32
-hit rate: 0.781
-ROI: +28.91%
-P&L: +92.50
-max drawdown: 20.00
-CLV: 0.00% (opening odds unavailable)
+bets: 17
+hit rate: 0.706
+ROI: +20.59%
+P&L: +35.00
+max drawdown: 20.50
+avg CLV: 0.00% closing-vs-closing
+selection: HOME only
 ```
 
-Global stored real bets in DB:
+Meta-model walk-forward on opening runs:
 
 ```text
-bets: 1,515
-stake: 15,150.00
-P&L: -1,480.00
-ROI: -9.77%
-hit rate: 0.450
+min_train_seasons=3: 15 baseline bets, 15 meta bets, ROI +38.93%
+min_train_seasons=2: 18 baseline bets, 18 meta bets, ROI +42.72%
+Brier range: 0.2106 - 0.2168
 ```
 
-By selection over all stored real bets:
+Interpretation:
 
 ```text
-HOME: 1,029 bets | ROI -4.37%  | hit rate 0.521
-AWAY:   467 bets | ROI -21.79% | hit rate 0.304
-DRAW:    19 bets | ROI -6.58%  | hit rate 0.158
+The opening signal is better than closing and has positive average CLV.
+The meta-model currently keeps every selected policy bet, so it has no proven incremental value yet.
+The signal remains too low-volume for production confidence.
 ```
 
-### 7. Additional Markets
-
-Poisson probabilities added for:
+## Data State After Reimport
 
 ```text
-OVER_2_5
-UNDER_2_5
-BTTS_YES
-BTTS_NO
+Batch reimport: 50/50 successful
+Existing odds updated to true closing: 25,667
+1X2 opening odds: 26,850
+1X2 closing odds: 54,249
+OU_2_5 opening odds: 17,892
+OU_2_5 closing odds: 17,906
+BTTS odds: 0
 ```
-
-Importer can now load Bet365 O/U 2.5 and BTTS when columns exist:
-
-```text
-B365>2.5 / B365<2.5
-B365C>2.5 / B365C<2.5
-B365GG / B365NG
-B365CGG / B365CNG
-```
-
-Current status: probability and data support exist; no default betting policy is promoted for these markets yet.
 
 ## Quality Assessment
 
-Code quality improved.
-
-Positive:
+Quality as a research/backtesting engine: good.
 
 ```text
-- Leakage-safe temporal ELO implementation.
-- Form features use only prior matches.
-- Meta-model is optional and reproducible via persisted file.
-- Opening/closing distinction is now represented in importer and backtester.
-- Stability metrics are separated from aggregate ROI.
-- Tests increased to 71 passing.
+- Leakage-safe temporal features are in place.
+- Opening and closing prices are stored distinctly.
+- Reimport is idempotent and can update stale snapshots.
+- Stability reporting includes ROI, hit rate, drawdown and CLV.
+- Walk-forward meta-model validation exists.
+- Test suite passes: 72 passed.
 ```
 
-Remaining concerns:
+Main quality gaps:
 
 ```text
-- Backtester still performs repeated prior-match queries and can be optimized with temporal caches.
-- Feature payload is stored in reason strings, not structured columns.
-- Meta-model has training infrastructure but no walk-forward training/evaluation loop yet.
-- Current DB needs reimport to populate opening odds and new markets.
+- Backtest feature payloads are still stored in reason text.
+- Meta-model thresholds are simple and not yet useful.
+- O/U 2.5 has data and probabilities but no validated betting policy.
+- BTTS cannot be evaluated from the current CSV data.
 ```
 
 ## Reliability Assessment
 
-Reliability is improved but not sufficient for real-money confidence.
+Reliability as a research engine: medium-good.
+Reliability as a betting engine: low-to-medium.
 
-Current reliability level: medium as a research engine, low as a live betting engine.
-
-Why:
+Reason:
 
 ```text
-- Positive holdout ROI exists but only on 6 bets.
-- Walk-forward recent block has 32 bets, still low volume.
-- Global stored history remains negative ROI.
-- CLV cannot yet validate whether the model beats market movement.
-- HOME-only profitability may be sampling noise until opening/CLV and larger OOS windows confirm it.
+Positive: opening ROI +39.00%, average CLV +1.41%, max drawdown lower than closing.
+Negative: only 21 opening bets, all HOME, mixed CLV by season/league, no meta-model uplift.
 ```
 
-Minimum reliability gates before promotion:
+Minimum gates before considering the engine reliable for capital:
 
 ```text
-- opening-odds backtest over all 10 seasons
-- CLV positive on average
-- minimum bets per season/league
-- positive or controlled drawdown in multiple seasons
-- no hidden dependency on a single league or season
-- meta-model evaluated strictly walk-forward
+- materially higher bet count
+- positive CLV in most seasons and leagues
+- controlled drawdown by time window
+- meta-model must reject bad bets without deleting all volume
+- O/U 2.5 must be tested with opening and closing odds
 ```
 
 ## Market Competitiveness
 
-Current competitiveness: not proven.
+Competitiveness is not proven.
 
-The engine can identify narrow positive historical slices, but the betting market competitiveness is still unverified because:
+The engine has a potentially real signal because it finds some value at opening prices before the closing market. That matters more than ROI alone. But the sample is too small and too concentrated on HOME selections to call it market-competitive.
 
-```text
-- 1X2 is highly efficient.
-- Existing profitable slices have low volume.
-- Existing CLV is unavailable because DB currently has closing-only odds.
-- AWAY is structurally weak and should remain closed.
-- DRAW support exists but has not proven stable.
-```
-
-The most promising path is not broader 1X2 threshold tuning. It is:
+Current market verdict:
 
 ```text
-1. reimport opening/closing odds
-2. train meta-model walk-forward
-3. evaluate CLV and stability
-4. test O/U 2.5 and BTTS because Poisson naturally prices them
+Interesting research signal, not yet a production betting edge.
 ```
 
 ## What Works Well
 
 ```text
-- The data/backtest pipeline is coherent and testable.
-- Poisson calibration is reasonable.
-- HOME-specific narrow policy can produce positive OOS slices.
-- League-specific policy avoids forcing volume in weak leagues.
-- New ELO/form/meta features create a better feature surface for selection.
-- Stability report now reveals whether ROI depends on time/league/selection.
+- HOME opening signal is the strongest current 1X2 slice.
+- Opening odds outperform closing odds in ROI and drawdown.
+- CLV is now measurable and positive overall.
+- The codebase supports repeatable walk-forward validation.
+- O/U 2.5 is ready for the next policy test.
 ```
 
 ## What Is Bad
 
 ```text
-- Overall historical betting ROI is still negative.
-- AWAY is materially bad: -21.79% ROI over stored real bets.
-- DRAW has too little volume and poor hit rate in stored bets.
-- Current profitable results are too low-volume to trust.
-- No usable CLV yet on the current DB.
-- New O/U and BTTS markets are not yet backtested as betting policies.
+- Bet volume is too low.
+- AWAY remains closed and unproven.
+- DRAW remains unproven.
+- Meta-model does not yet improve selection.
+- 1X2 remains a very efficient market.
 ```
 
 ## High Priority Next Changes
 
-1. Reimport historical CSVs to populate opening/closing odds and O/U-BTTS columns.
-2. Run opening-vs-closing calibration and stability reports over 10 seasons.
-3. Train the selection meta-model on older seasons and validate on later seasons only.
-4. Add structured feature columns or JSON metadata for backtest_bets instead of parsing reason text.
-5. Add walk-forward evaluation for O/U 2.5 and BTTS with separate policies.
-6. Keep AWAY disabled until a dedicated AWAY policy has positive OOS ROI and non-negative CLV.
+1. Validate O/U 2.5 opening/closing policy with CLV and stability by season/league.
+2. Improve meta-model selectivity and report kept-bet vs rejected-bet ROI.
+3. Store feature payloads as structured JSON/columns instead of parsing reason text.
+4. Add ROI/CLV confidence intervals or bootstrap diagnostics.
+5. Require minimum bet volume before accepting any policy slice.
 
-## Lower Priority Changes
+## Lower Priority Next Changes
 
-1. Optimize temporal feature computation with cached rolling state.
-2. Add Asian handicap and double chance after O/U and BTTS are validated.
-3. Add dashboard views only after CLV and stability are meaningful.
-4. Add model artifact registry for meta-model versions.
-5. Add richer calibration plots by market and selection.
+1. Look for a reliable free BTTS odds source.
+2. Add Asian handicap and double chance after O/U 2.5.
+3. Optimize rolling feature computation.
+4. Build dashboard only after betting policies are more reliable.
+5. Add model artifact/version registry.
 
 ## Final Verdict
 
-The project is in a stronger engineering state, but not yet a competitive betting engine.
-
-The next decisive test is not another threshold search. It is an opening-odds, walk-forward, CLV-aware validation over multiple seasons and leagues. If that shows positive CLV, controlled drawdown and enough volume, the engine becomes genuinely interesting. Without that, the current positive ROI slices should be treated as fragile research signals.
+The project is stronger and more honest than before Phase 4B: it can now test whether a signal beats the market before closing. The current opening HOME signal is promising, but not enough to declare the betting engine competitive. The next efficient step is O/U 2.5 opening/closing validation, not more 1X2 threshold tuning.
