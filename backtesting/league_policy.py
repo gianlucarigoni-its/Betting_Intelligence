@@ -52,6 +52,7 @@ class LeagueBettingPolicy:
     btts_no_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
+    overall_strength_weight: float = 0.0
     recent_form_half_life_matches: float = 0.0
     home_lambda_multiplier: float = 1.0
     away_lambda_multiplier: float = 1.0

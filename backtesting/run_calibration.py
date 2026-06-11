@@ -89,6 +89,7 @@ class BacktestDefaults:
     btts_no_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
+    overall_strength_weight: float = 0.0
     recent_form_half_life_matches: float = 0.0
     home_lambda_multiplier: float = 1.0
     away_lambda_multiplier: float = 1.0
@@ -242,6 +243,7 @@ def _phase_backtest(
                     btts_no_max_bookmaker_odds=defaults.btts_no_max_bookmaker_odds,
                     min_prior_matches=defaults.min_prior_matches,
                     shrinkage_matches=defaults.shrinkage_matches,
+                    overall_strength_weight=defaults.overall_strength_weight,
                     recent_form_half_life_matches=defaults.recent_form_half_life_matches,
                     home_lambda_multiplier=defaults.home_lambda_multiplier,
                     away_lambda_multiplier=defaults.away_lambda_multiplier,
@@ -301,8 +303,17 @@ def _phase_backtest(
                             under_max_edge_pct=effective.under_max_edge_pct,
                             under_min_model_probability=effective.under_min_model_probability,
                             under_max_bookmaker_odds=effective.under_max_bookmaker_odds,
+                            btts_yes_min_edge_pct=effective.btts_yes_min_edge_pct,
+                            btts_yes_max_edge_pct=effective.btts_yes_max_edge_pct,
+                            btts_yes_min_model_probability=effective.btts_yes_min_model_probability,
+                            btts_yes_max_bookmaker_odds=effective.btts_yes_max_bookmaker_odds,
+                            btts_no_min_edge_pct=effective.btts_no_min_edge_pct,
+                            btts_no_max_edge_pct=effective.btts_no_max_edge_pct,
+                            btts_no_min_model_probability=effective.btts_no_min_model_probability,
+                            btts_no_max_bookmaker_odds=effective.btts_no_max_bookmaker_odds,
                             min_prior_matches=effective.min_prior_matches,
                             shrinkage_matches=effective.shrinkage_matches,
+                            overall_strength_weight=effective.overall_strength_weight,
                             recent_form_half_life_matches=effective.recent_form_half_life_matches,
                             home_lambda_multiplier=effective.home_lambda_multiplier,
                             away_lambda_multiplier=effective.away_lambda_multiplier,
@@ -437,6 +448,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--btts-no-max-bookmaker-odds", type=float, default=2.4)
     parser.add_argument("--min-prior-matches", type=int, default=5)
     parser.add_argument("--shrinkage-matches", type=int, default=10)
+    parser.add_argument("--overall-strength-weight", type=float, default=0.0)
     parser.add_argument(
         "--recent-form-half-life-matches",
         type=float,
@@ -536,6 +548,7 @@ def main() -> None:
         btts_no_max_bookmaker_odds=args.btts_no_max_bookmaker_odds,
         min_prior_matches=args.min_prior_matches,
         shrinkage_matches=args.shrinkage_matches,
+        overall_strength_weight=args.overall_strength_weight,
         recent_form_half_life_matches=args.recent_form_half_life_matches,
         home_lambda_multiplier=args.home_lambda_multiplier,
         away_lambda_multiplier=args.away_lambda_multiplier,

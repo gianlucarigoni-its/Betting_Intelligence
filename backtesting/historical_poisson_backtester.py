@@ -82,6 +82,7 @@ class HistoricalPoissonBacktestConfig:
     btts_no_max_bookmaker_odds: float | None = 2.4
     min_prior_matches: int = 5
     shrinkage_matches: int = 10
+    overall_strength_weight: float = 0.0
     recent_form_half_life_matches: float = 0.0
     home_lambda_multiplier: float = 1.0
     away_lambda_multiplier: float = 1.0
@@ -167,6 +168,7 @@ class HistoricalPoissonBacktester:
                 f"away_max_bookmaker_odds={config.away_max_bookmaker_odds}; "
                 f"allow_away_bets={config.allow_away_bets}; "
                 f"min_prior_matches={config.min_prior_matches}; "
+                f"overall_strength_weight={config.overall_strength_weight}; "
                     f"flat_stake={config.flat_stake}; "
                     f"recent_form_half_life_matches="
                     f"{config.recent_form_half_life_matches}; "
@@ -436,6 +438,50 @@ class HistoricalPoissonBacktester:
             sample_size=len(away_away_prior),
             shrinkage_matches=config.shrinkage_matches,
         )
+
+        overall_weight = min(max(config.overall_strength_weight, 0.0), 1.0)
+        if overall_weight > 0.0:
+            league_team_goals = (league_home_goals + league_away_goals) / 2.0
+            home_history = [
+                item for item in prior_matches
+                if item.home_team_id == match.home_team_id or item.away_team_id == match.home_team_id
+            ]
+            away_history = [
+                item for item in prior_matches
+                if item.home_team_id == match.away_team_id or item.away_team_id == match.away_team_id
+            ]
+            home_overall_attack = self._shrink_ratio(
+                value=self._avg_team_goals(
+                    home_history, match.home_team_id, scored=True, half_life_matches=half_life
+                ) / league_team_goals,
+                sample_size=len(home_history),
+                shrinkage_matches=config.shrinkage_matches,
+            )
+            home_overall_defense = self._shrink_ratio(
+                value=self._avg_team_goals(
+                    home_history, match.home_team_id, scored=False, half_life_matches=half_life
+                ) / league_team_goals,
+                sample_size=len(home_history),
+                shrinkage_matches=config.shrinkage_matches,
+            )
+            away_overall_attack = self._shrink_ratio(
+                value=self._avg_team_goals(
+                    away_history, match.away_team_id, scored=True, half_life_matches=half_life
+                ) / league_team_goals,
+                sample_size=len(away_history),
+                shrinkage_matches=config.shrinkage_matches,
+            )
+            away_overall_defense = self._shrink_ratio(
+                value=self._avg_team_goals(
+                    away_history, match.away_team_id, scored=False, half_life_matches=half_life
+                ) / league_team_goals,
+                sample_size=len(away_history),
+                shrinkage_matches=config.shrinkage_matches,
+            )
+            home_attack = self._geometric_blend(home_attack, home_overall_attack, overall_weight)
+            home_defense = self._geometric_blend(home_defense, home_overall_defense, overall_weight)
+            away_attack = self._geometric_blend(away_attack, away_overall_attack, overall_weight)
+            away_defense = self._geometric_blend(away_defense, away_overall_defense, overall_weight)
 
         lambda_home = (
             league_home_goals
@@ -1016,6 +1062,38 @@ class HistoricalPoissonBacktester:
             return 0.2
 
         return max(weighted_sum / total_weight, 0.2)
+
+    @staticmethod
+    def _avg_team_goals(
+        matches: list[Match],
+        team_id: int,
+        *,
+        scored: bool,
+        half_life_matches: float,
+    ) -> float:
+        if not matches:
+            return 0.2
+        ordered = sorted(matches, key=lambda item: (item.match_date, item.id))
+        weighted_sum = 0.0
+        total_weight = 0.0
+        latest_index = len(ordered) - 1
+        for index, match in enumerate(ordered):
+            if match.home_team_id == team_id:
+                goals_for = float(match.score_home_ft or 0)
+                goals_against = float(match.score_away_ft or 0)
+            else:
+                goals_for = float(match.score_away_ft or 0)
+                goals_against = float(match.score_home_ft or 0)
+            weight = 1.0 if half_life_matches <= 0 else 0.5 ** ((latest_index - index) / half_life_matches)
+            weighted_sum += (goals_for if scored else goals_against) * weight
+            total_weight += weight
+        return max(weighted_sum / total_weight, 0.2) if total_weight > 0 else 0.2
+
+    @staticmethod
+    def _geometric_blend(venue_strength: float, overall_strength: float, weight: float) -> float:
+        venue = max(venue_strength, 1e-6)
+        overall = max(overall_strength, 1e-6)
+        return math.exp((1.0 - weight) * math.log(venue) + weight * math.log(overall))
 
     @staticmethod
     def _shrink_ratio(*, value: float, sample_size: int, shrinkage_matches: int) -> float:

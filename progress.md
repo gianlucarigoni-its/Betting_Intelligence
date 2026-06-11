@@ -1948,3 +1948,34 @@ Decision:
 
 Report:
 - `reports/meta_probability_architecture_audit.md`
+
+
+---
+
+## Step 15 - Hierarchical Poisson Goal Generator
+
+Status: completed, tested, not capital-ready.
+
+Changes:
+- Added `overall_strength_weight` to blend venue-specific attack/defense with overall team attack/defense.
+- Exposed the parameter through config, league policy, and calibration CLI.
+- Fixed BTTS config propagation into `HistoricalPoissonBacktestConfig`.
+
+Validation:
+- Full suite: 88 passed.
+- O/U opening backtest with `overall_strength_weight=0.35`: runs `590-614`.
+- Stability and nested meta-model validation on runs `590-614`.
+
+Result:
+- Raw O/U baseline improved from ROI -6.13% / CLV -0.36% to ROI -4.05% / CLV -0.18%.
+- Nested selector improved to ROI -1.04% / CLV +0.08%, but confidence intervals still cross zero.
+- Capital readiness: FAIL.
+- BTTS still cannot be evaluated because the database has no BTTS odds snapshots.
+
+Decision:
+- Keep hierarchical strength blending as experimental infrastructure.
+- Do not promote as production default.
+- Next cycle should split OVER/UNDER policy and add a deployable-policy registry with strict latest-fold and CLV gates.
+
+Report:
+- `reports/hierarchical_poisson_generator_report.md`
