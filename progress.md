@@ -2109,3 +2109,31 @@ Decision:
 
 Report:
 - `reports/market_coverage_guardrail_report.md`
+
+
+---
+
+## Step 21 - 1X2 Opening Audit
+
+Status: completed, tested, not capital-ready.
+
+Changes:
+- Exposed HOME and DRAW betting switches through `backtesting.run_calibration`.
+- Ran 1X2 opening backtests with HOME/DRAW/AWAY enabled and hierarchical strength blending.
+
+Validation:
+- Full suite: 91 passed.
+- Runs `690-714` on seasons `1920,2021,2122,2223,2324`.
+
+Result:
+- Bets: 791.
+- ROI -8.45%, ROI CI [-17.62%, +0.11%].
+- CLV -0.42%, CLV CI [-1.04%, +0.13%].
+- Capital readiness: FAIL.
+
+Decision:
+- 1X2 opening is not a production candidate under the current model.
+- Next cycle should move toward a market-aware promotion layer or richer data import rather than more threshold tuning.
+
+Report:
+- `reports/one_x_two_opening_audit_report.md`

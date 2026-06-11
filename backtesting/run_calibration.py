@@ -404,12 +404,21 @@ def _parse_args() -> argparse.Namespace:
         default="1X2",
         help="Mercato da backtestare.",
     )
+    parser.add_argument("--allow-home-bets", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--allow-draw-bets", action="store_true")
     parser.add_argument("--min-edge-pct", type=float, default=5.0)
     parser.add_argument("--max-edge-pct", type=float, default=6.0)
     parser.add_argument(
         "--min-model-probability", type=float, default=0.55,
     )
     parser.add_argument("--max-bookmaker-odds", type=float, default=1.8)
+    parser.add_argument("--home-min-form-goal-diff-delta", type=float)
+    parser.add_argument("--draw-min-edge-pct", type=float, default=4.0)
+    parser.add_argument("--draw-max-edge-pct", type=float, default=9.0)
+    parser.add_argument("--draw-min-model-probability", type=float, default=0.24)
+    parser.add_argument("--draw-max-bookmaker-odds", type=float, default=4.2)
+    parser.add_argument("--draw-max-lambda-gap", type=float, default=0.25)
+    parser.add_argument("--draw-max-abs-form-goal-diff-delta", type=float, default=0.35)
     parser.add_argument("--away-min-edge-pct", type=float, default=99.0)
     parser.add_argument("--away-min-model-probability", type=float, default=0.58)
     parser.add_argument("--away-max-bookmaker-odds", type=float, default=1.8)
@@ -518,10 +527,19 @@ def main() -> None:
         initial_bankroll=args.initial_bankroll,
         flat_stake=args.flat_stake,
         market_type=args.market_type,
+        allow_home_bets=args.allow_home_bets,
+        allow_draw_bets=args.allow_draw_bets,
         min_edge_pct=args.min_edge_pct,
         max_edge_pct=args.max_edge_pct,
         min_model_probability=args.min_model_probability,
         max_bookmaker_odds=args.max_bookmaker_odds,
+        home_min_form_goal_diff_delta=args.home_min_form_goal_diff_delta,
+        draw_min_edge_pct=args.draw_min_edge_pct,
+        draw_max_edge_pct=args.draw_max_edge_pct,
+        draw_min_model_probability=args.draw_min_model_probability,
+        draw_max_bookmaker_odds=args.draw_max_bookmaker_odds,
+        draw_max_lambda_gap=args.draw_max_lambda_gap,
+        draw_max_abs_form_goal_diff_delta=args.draw_max_abs_form_goal_diff_delta,
         away_min_edge_pct=args.away_min_edge_pct,
         away_min_model_probability=args.away_min_model_probability,
         away_max_bookmaker_odds=args.away_max_bookmaker_odds,
