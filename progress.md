@@ -482,6 +482,56 @@ Report dedicato:
 reports/ou25_corrected_poisson_slice_readiness_report.md
 ```
 
+
+---
+
+## 4B. Step 9 chiuso - meta-model O/U opening arricchito
+
+Implementato e verificato:
+
+```text
+- Il meta-model ora include market_type e odds_snapshot_type nel feature set.
+- odds_snapshot_type viene letto dai notes del backtest run (opening/closing).
+- Walk-forward del meta-model aggiornato con CLV medio e soglia meta configurabile.
+- Aggiunta sweep automatica delle soglie per evitare tuning manuale opaco.
+```
+
+Risultati O/U opening, run 440-464:
+
+```text
+Baseline broad: 1153 bet, ROI -6.13%, CLV -0.36%.
+
+Sweep soglie meta:
+0.55  -> 309 bet, ROI -2.77%, CLV -0.45%
+0.58  -> 145 bet, ROI +3.62%, CLV +0.08%
+0.59  -> 120 bet, ROI +7.59%, CLV +0.37%
+0.60  -> 95 bet,  ROI +5.61%, CLV +0.59%
+0.605 -> 86 bet, ROI +11.13%, CLV +0.51%
+0.61  -> 79 bet, ROI +9.25%, CLV +0.67%
+0.615 -> 59 bet, ROI +12.20%, CLV +1.16%
+0.62  -> 52 bet, ROI +15.31%, CLV +0.68%
+```
+
+Decisione:
+
+```text
+Il meta-model e' migliorato davvero: batte il baseline su ROI e CLV.
+Non e' ancora pronto per capitale reale perche' non raggiunge insieme volume minimo, stabilita' per stagione e soglia CLV robusta.
+La soglia 0.605 e' il miglior equilibrio trovato finora, ma resta sotto il floor di 100 bet.
+```
+
+Stato test:
+
+```text
+81 passed con: .venv/bin/python -m pytest -q -s
+```
+
+Report dedicato:
+
+```text
+reports/ou_opening_meta_walkforward_report.md
+```
+
 ---
 
 ## 4B. Report aggiornato

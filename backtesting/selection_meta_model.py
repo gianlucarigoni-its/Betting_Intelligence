@@ -12,7 +12,7 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.pipeline import Pipeline
 from sqlalchemy.orm import Session
 
-from database.models import BacktestBet, Competition, Match
+from database.models import BacktestBet, BacktestRun, Competition, Match
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +21,8 @@ class SelectionMetaModelSample:
 
     selection: str
     league: str
+    market_type: str
+    odds_snapshot_type: str
     edge_pct: float
     bookmaker_odds: float
     model_probability: float
@@ -35,7 +37,7 @@ class SelectionMetaModelSample:
 class SelectionMetaModel:
     """Small calibrated classifier for bet reliability."""
 
-    CATEGORICAL_FEATURES = ("selection", "league")
+    CATEGORICAL_FEATURES = ("selection", "league", "market_type", "odds_snapshot_type")
     NUMERIC_FEATURES = (
         "edge_pct",
         "bookmaker_odds",
@@ -86,19 +88,26 @@ class SelectionMetaModel:
         run_ids: Iterable[int] | None = None,
     ) -> list[SelectionMetaModelSample]:
         query = (
-            session.query(BacktestBet, Match, Competition)
+            session.query(BacktestBet, Match, Competition, BacktestRun)
             .join(Match, BacktestBet.match_id == Match.id)
             .join(Competition, Match.competition_id == Competition.id)
+            .join(BacktestRun, BacktestBet.backtest_run_id == BacktestRun.id)
             .filter(BacktestBet.result.is_not(None))
         )
         if run_ids is not None:
             query = query.filter(BacktestBet.backtest_run_id.in_(list(run_ids)))
 
         samples: list[SelectionMetaModelSample] = []
-        for bet, _match, competition in query.all():
+        for bet, _match, competition, run in query.all():
             if bet.result == "pending":
                 continue
-            samples.append(build_selection_meta_model_sample(bet, competition.name))
+            samples.append(
+                build_selection_meta_model_sample(
+                    bet,
+                    competition.name,
+                    odds_snapshot_type=_odds_snapshot_type_from_notes(run.notes),
+                )
+            )
         return samples
 
     @staticmethod
@@ -106,6 +115,8 @@ class SelectionMetaModel:
         return {
             "selection": sample.selection,
             "league": sample.league,
+            "market_type": sample.market_type,
+            "odds_snapshot_type": sample.odds_snapshot_type,
             "edge_pct": sample.edge_pct,
             "bookmaker_odds": sample.bookmaker_odds,
             "model_probability": sample.model_probability,
@@ -128,6 +139,8 @@ class SelectionMetaModel:
 def build_selection_meta_model_sample(
     bet: BacktestBet,
     league_name: str,
+    *,
+    odds_snapshot_type: str = "unknown",
 ) -> SelectionMetaModelSample:
     """Build one meta-model sample from a persisted backtest record."""
 
@@ -137,6 +150,8 @@ def build_selection_meta_model_sample(
     return SelectionMetaModelSample(
         selection=bet.selection,
         league=league_name,
+        market_type=bet.market_type,
+        odds_snapshot_type=odds_snapshot_type,
         edge_pct=bet.edge_pct,
         bookmaker_odds=bet.bookmaker_odds,
         model_probability=bet.model_probability,
@@ -167,3 +182,13 @@ def _float_from_payload(payload: dict[str, str], key: str) -> float:
         return float(raw)
     except ValueError:
         return 0.0
+
+
+def _odds_snapshot_type_from_notes(notes: str | None) -> str:
+    if not notes:
+        return "unknown"
+    payload = _parse_reason_payload(notes)
+    value = payload.get("odds_snapshot_type")
+    if value in {"opening", "closing"}:
+        return value
+    return "unknown"
