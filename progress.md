@@ -2079,3 +2079,33 @@ Decision:
 
 Report:
 - `reports/ou_data_coverage_expansion_report.md`
+
+
+---
+
+## Step 20 - Market Coverage Guardrail
+
+Status: completed, tested.
+
+Changes:
+- Added `backtesting.run_market_coverage_report`.
+- Added coverage tests for market summary aggregation.
+- Coverage gate now blocks markets with insufficient opening/closing seasons or missing snapshots.
+
+Validation:
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_market_coverage_report.py -q -s`
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -s`
+- O/U coverage gate with 8-season minimum: FAIL.
+- BTTS coverage gate: FAIL market not found.
+
+Result:
+- Current O/U coverage is only 5 seasons.
+- BTTS has no odds snapshots.
+- Capital readiness: FAIL due data coverage and model stability.
+
+Decision:
+- Keep the coverage guardrail.
+- Next cycle must either import more market odds or restrict production evaluation to markets with enough historical coverage.
+
+Report:
+- `reports/market_coverage_guardrail_report.md`
