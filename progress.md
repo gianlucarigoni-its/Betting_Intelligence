@@ -2054,3 +2054,28 @@ Decision:
 
 Report:
 - `reports/selection_specific_nested_walkforward_report.md`
+
+
+---
+
+## Step 19 - O/U Historical Coverage Expansion
+
+Status: completed, data blocker confirmed.
+
+Action:
+- Generated hierarchical O/U opening runs `640-689` for five leagues across seasons `1415` to `2324`.
+- Ran selection-specific nested validation on the expanded run range.
+- Fixed the capital-readiness report CLI output for `BY_SELECTION_READINESS`.
+
+Result:
+- Seasons `1415` to `1819` produced zero O/U bets because the DB has no O/U odds snapshots for those seasons.
+- Effective O/U dataset remains seasons `1920` to `2324`.
+- Selection-specific results match the previous five-season validation.
+- Capital readiness: FAIL.
+
+Decision:
+- Stop treating more backtest seasons as available O/U validation unless odds coverage exists.
+- Next cycle must add market coverage diagnostics and/or import additional O/U/BTTS odds data.
+
+Report:
+- `reports/ou_data_coverage_expansion_report.md`

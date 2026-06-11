@@ -56,16 +56,18 @@ def main() -> None:
         for failure in result.failures:
             print(f"- {failure}")
 
-    print("
-BY_SELECTION_READINESS")
+    print("\nBY_SELECTION_READINESS")
     for metric in report.by_selection:
         slice_result = evaluate_slice_readiness(metric, criteria)
         slice_status = "PASS" if slice_result.passed else "FAIL"
-        print(f"{metric.label:<24} {slice_status} bets={metric.bets} roi={metric.roi_pct:.2f}% clv={metric.avg_clv_pct:.2f}%")
+        roi = "N/A" if metric.roi_pct is None else f"{metric.roi_pct:.2f}%"
+        clv = "N/A" if metric.avg_clv_pct is None else f"{metric.avg_clv_pct:.2f}%"
+        print(f"{metric.label:<24} {slice_status} bets={metric.bets} roi={roi} clv={clv}")
         if slice_result.failures:
             print("  FAILURES")
             for failure in slice_result.failures:
                 print(f"  - {failure}")
+
 
 
 if __name__ == "__main__":
