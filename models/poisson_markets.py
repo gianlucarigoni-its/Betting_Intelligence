@@ -32,8 +32,6 @@ def calculate_poisson_market_probabilities(
     home = 0.0
     draw = 0.0
     away = 0.0
-    over_25 = 0.0
-    btts_yes = 0.0
 
     for home_goals in range(max_goals + 1):
         home_prob = poisson.pmf(home_goals, lambda_home)
@@ -45,10 +43,6 @@ def calculate_poisson_market_probabilities(
                 draw += probability
             else:
                 away += probability
-            if home_goals + away_goals >= 3:
-                over_25 += probability
-            if home_goals > 0 and away_goals > 0:
-                btts_yes += probability
 
     total_1x2 = home + draw + away
     if total_1x2 <= 0:
@@ -57,6 +51,14 @@ def calculate_poisson_market_probabilities(
     home /= total_1x2
     draw /= total_1x2
     away /= total_1x2
+    total_lambda = lambda_home + lambda_away
+    over_25 = float(1.0 - poisson.cdf(2, total_lambda))
+    btts_yes = float(
+        1.0
+        - poisson.pmf(0, lambda_home)
+        - poisson.pmf(0, lambda_away)
+        + poisson.pmf(0, total_lambda)
+    )
     over_25 = min(max(over_25, 0.0), 1.0)
     btts_yes = min(max(btts_yes, 0.0), 1.0)
 

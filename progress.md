@@ -432,6 +432,56 @@ Stato test:
 78 passed
 ```
 
+
+---
+
+## 4B. Step 8 chiuso - correzione O/U naturale e slice readiness
+
+Implementato e verificato:
+
+```text
+- Corretto il calcolo Poisson dei mercati naturali: OVER/UNDER 2.5 e BTTS non dipendono piu' dalla griglia troncata max_goals.
+- Aggiunti test di regressione per assicurare che O/U e BTTS siano calcolati con formule Poisson esatte.
+- Aggiunto validator di policy slice: backtesting.run_policy_slice_readiness_report.
+- Il validator filtra per run, lega, selection, mercato, edge, probabilita' modello, quota massima e controlla ROI CI, drawdown e stabilita' per stagione.
+- Aggiunto gate temporale opzionale con numero minimo di bet per stagione e ROI minimo per stagione.
+```
+
+Risultati corretti O/U 2.5 broad:
+
+```text
+Opening runs 440-464: bets 1764, ROI -6.78%, ROI CI [-11.17%, -2.40%], CLV -0.36%, CLV CI [-0.64%, -0.09%], FAIL.
+Closing runs 465-489: bets 1738, ROI -4.95%, ROI CI [-9.42%, -0.62%], FAIL.
+```
+
+Risultati slice migliore trovata:
+
+```text
+Bundesliga OVER_2_5 closing, runs 465-489
+edge [5.0, 9.0), model_probability >= 0.55, odds <= 2.00
+bets 112, ROI +15.06%, ROI CI [+0.54%, +29.13%], drawdown 5.36% stake
+```
+
+Decisione:
+
+```text
+La slice Bundesliga OVER closing e' solo research candidate.
+Non e' promossa a capitale reale: a opening odds fallisce ROI/CLV, e con ROI minimo per stagione 2.0% fallisce 2020/2021 e 2023/2024.
+La ricerca parametrica non ha trovato candidate O/U con almeno 100 bet totali, 15 per stagione, ROI CI aggregata positiva e ROI >= 2.0% in ogni stagione.
+```
+
+Stato test:
+
+```text
+80 passed con: .venv/bin/python -m pytest -q -s
+```
+
+Report dedicato:
+
+```text
+reports/ou25_corrected_poisson_slice_readiness_report.md
+```
+
 ---
 
 ## 4B. Report aggiornato
