@@ -126,3 +126,35 @@ def test_import_from_csv_text_imports_ou25_and_btts_when_available() -> None:
     assert {snapshot.market_type for snapshot in snapshots} == {"1X2", "OU_2_5", "BTTS"}
     assert {snapshot.selection for snapshot in snapshots if snapshot.market_type == "OU_2_5"} == {"OVER_2_5", "UNDER_2_5"}
     assert {snapshot.selection for snapshot in snapshots if snapshot.market_type == "BTTS"} == {"BTTS_YES", "BTTS_NO"}
+
+
+def test_reimport_updates_old_closing_snapshot_when_true_closing_columns_appear() -> None:
+    session = build_session()
+    importer = FootballDataImporter(session)
+    config = FootballDataImportConfig(
+        season_code="2324",
+        division_code="E0",
+        competition_name="English Premier League",
+        country="England",
+        season_label="2023/2024",
+    )
+    old_csv = (
+        "Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,B365H,B365D,B365A\n"
+        "E0,11/08/2023,Burnley,Man City,0,3,A,8.00,5.50,1.33\n"
+    )
+    new_csv = (
+        "Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,B365H,B365D,B365A,B365CH,B365CD,B365CA\n"
+        "E0,11/08/2023,Burnley,Man City,0,3,A,8.00,5.50,1.33,9.00,5.80,1.30\n"
+    )
+
+    importer.import_from_csv_text(config=config, csv_text=old_csv)
+    result = importer.import_from_csv_text(config=config, csv_text=new_csv)
+
+    snapshots = session.query(HistoricalOddSnapshot).all()
+    opening_home = next(snapshot for snapshot in snapshots if snapshot.selection == "HOME" and snapshot.is_opening)
+    closing_home = next(snapshot for snapshot in snapshots if snapshot.selection == "HOME" and snapshot.is_closing)
+
+    assert result.odds_imported == 6
+    assert session.query(HistoricalOddSnapshot).count() == 6
+    assert opening_home.odd_value == 8.00
+    assert closing_home.odd_value == 9.00

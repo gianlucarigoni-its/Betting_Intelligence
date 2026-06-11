@@ -343,7 +343,7 @@ class FootballDataImporter:
         is_closing: bool,
         source_url: str | None,
     ) -> int:
-        if any(not self._has_value(value) for value in odds_map.values()):
+        if any(not self._is_valid_odds_value(value) for value in odds_map.values()):
             return 0
         decimal_odds = {selection: float(value) for selection, value in odds_map.items() if value is not None}
         implied_probs = {selection: 1.0 / odd for selection, odd in decimal_odds.items()}
@@ -364,6 +364,16 @@ class FootballDataImporter:
                 .one_or_none()
             )
             if exists is not None:
+                imported += self._update_existing_snapshot(
+                    exists,
+                    odd_value=odd_value,
+                    implied_prob=implied_probs[selection],
+                    fair_prob=fair_probs[selection],
+                    overround_pct=overround_pct,
+                    is_opening=is_opening,
+                    is_closing=is_closing,
+                    source_url=source_url,
+                )
                 continue
             self._session.add(
                 HistoricalOddSnapshot(
@@ -399,7 +409,7 @@ class FootballDataImporter:
         is_closing: bool,
         source_url: str | None,
     ) -> int:
-        if any(not self._has_value(value) for value in odds_map.values()):
+        if any(not self._is_valid_odds_value(value) for value in odds_map.values()):
             return 0
 
         decimal_odds = {
@@ -432,6 +442,16 @@ class FootballDataImporter:
                 .one_or_none()
             )
             if exists is not None:
+                imported += self._update_existing_snapshot(
+                    exists,
+                    odd_value=odd_value,
+                    implied_prob=implied_probs[selection],
+                    fair_prob=fair_probs[selection],
+                    overround_pct=overround_pct,
+                    is_opening=is_opening,
+                    is_closing=is_closing,
+                    source_url=source_url,
+                )
                 continue
 
             self._session.add(
@@ -457,6 +477,39 @@ class FootballDataImporter:
 
         self._session.flush()
         return imported
+
+    @staticmethod
+    def _update_existing_snapshot(
+        snapshot: HistoricalOddSnapshot,
+        *,
+        odd_value: float,
+        implied_prob: float,
+        fair_prob: float,
+        overround_pct: float,
+        is_opening: bool,
+        is_closing: bool,
+        source_url: str | None,
+    ) -> int:
+        changed = False
+        updates = {
+            "odd_value": odd_value,
+            "implied_prob": implied_prob,
+            "fair_prob": fair_prob,
+            "overround_pct": overround_pct,
+            "is_opening": is_opening,
+            "is_closing": is_closing,
+            "source_url": source_url,
+        }
+        for field_name, new_value in updates.items():
+            old_value = getattr(snapshot, field_name)
+            if isinstance(new_value, float):
+                if old_value is None or abs(float(old_value) - new_value) > 1e-12:
+                    setattr(snapshot, field_name, new_value)
+                    changed = True
+            elif old_value != new_value:
+                setattr(snapshot, field_name, new_value)
+                changed = True
+        return 1 if changed else 0
 
     def _get_or_create_match(
         self,
@@ -613,6 +666,15 @@ class FootballDataImporter:
     @staticmethod
     def _has_value(raw_value: str | None) -> bool:
         return raw_value is not None and raw_value.strip() != ""
+
+    @staticmethod
+    def _is_valid_odds_value(raw_value: str | None) -> bool:
+        if raw_value is None or raw_value.strip() == "":
+            return False
+        try:
+            return float(raw_value) > 1.0
+        except ValueError:
+            return False
 
     @staticmethod
     def _normalize_date(raw_date: str) -> str:
