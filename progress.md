@@ -1979,3 +1979,23 @@ Decision:
 
 Report:
 - `reports/hierarchical_poisson_generator_report.md`
+
+
+---
+
+## Step 16 - O/U Policy Separation Audit
+
+Status: completed, no capital-ready policy found.
+
+Finding:
+- The hierarchical Poisson generator improved O/U baseline performance, but the market remains asymmetric.
+- `OVER_2_5` can reach positive ROI while losing CLV.
+- `UNDER_2_5` can reach positive CLV while losing ROI.
+- No combined O/U policy sweep on runs `590-614` produced capital-ready metrics.
+
+Decision:
+- Do not promote a shared O/U policy to production.
+- Next cycle must enforce separate deployment rules for OVER and UNDER and add a stricter production gate.
+
+Report:
+- `reports/ou_policy_separation_sweep_report.md`
