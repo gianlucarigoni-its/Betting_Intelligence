@@ -577,6 +577,50 @@ Report dedicato:
 reports/ou_opening_nested_meta_walkforward_report.md
 ```
 
+
+---
+
+## 4B. Step 11 chiuso - dual meta-model win + CLV
+
+Implementato e verificato:
+
+```text
+- Il nested selector supporta ora un dual-model: win model + CLV-positive model.
+- Il score puo' combinare le probabilita' con media o minimo.
+- Aggiunto supporto a selection objective volume-first.
+- Aggiunti test per il combinatore dual.
+```
+
+Risultati dual O/U opening, run 440-464:
+
+```text
+Dual mean + volume-first, threshold grid 0.55-0.61: 60 bet, ROI +17.12%, CLV +0.17%, ROI CI [+1.07%, +30.38%], CLV CI [-0.97%, +1.46%], FAIL per volume e CLV CI.
+
+Dual mean + volume-first, threshold grid 0.50-0.58: 191 bet, ROI +1.20%, CLV -0.40%, ROI CI [-10.79%, +10.64%], CLV CI [-1.26%, +0.42%], FAIL per CI.
+
+Dual min e' stato peggiore su volume e/o redditivita'.
+```
+
+Decisione:
+
+```text
+Il dual-model e' il miglior segnale finora sul piano dell'edge storico.
+Non e' ancora capital-ready: o manca volume, o il volume aggiuntivo distrugge l'edge e il CLV.
+La prossima direzione sensata e' un ranker o ensemble piu' ricco, oppure piu' stagioni O/U per dare spazio al nested selector.
+```
+
+Stato test:
+
+```text
+87 passed con: .venv/bin/python -m pytest -q -s
+```
+
+Report dedicato:
+
+```text
+reports/ou_dual_nested_meta_walkforward_report.md
+```
+
 ---
 
 ## 4B. Report aggiornato

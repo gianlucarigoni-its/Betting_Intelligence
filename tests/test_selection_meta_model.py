@@ -67,3 +67,19 @@ def test_odds_snapshot_type_from_backtest_notes() -> None:
     assert _odds_snapshot_type_from_notes("competition_id=1; odds_snapshot_type=closing") == "closing"
     assert _odds_snapshot_type_from_notes("competition_id=1") == "unknown"
     assert _odds_snapshot_type_from_notes(None) == "unknown"
+
+
+def test_selection_meta_model_sample_accepts_label_override() -> None:
+    sample = _sample(
+        selection="HOME",
+        league="A",
+        edge=1.0,
+        odds=2.0,
+        model_prob=0.55,
+        bookmaker_prob=0.50,
+        lambda_home=1.0,
+        lambda_away=1.0,
+        label=0,
+    )
+
+    assert sample.label == 0

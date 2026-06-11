@@ -141,6 +141,7 @@ def build_selection_meta_model_sample(
     league_name: str,
     *,
     odds_snapshot_type: str = "unknown",
+    label_override: int | None = None,
 ) -> SelectionMetaModelSample:
     """Build one meta-model sample from a persisted backtest record."""
 
@@ -160,7 +161,7 @@ def build_selection_meta_model_sample(
         lambda_home=lambda_home,
         lambda_away=lambda_away,
         lambda_gap=abs(lambda_home - lambda_away),
-        label=1 if bet.result == "won" else 0,
+        label=label_override if label_override is not None else (1 if bet.result == "won" else 0),
     )
 
 

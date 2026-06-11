@@ -80,14 +80,31 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--min-inner-train-seasons", type=int, default=1)
     parser.add_argument("--min-meta-bets", type=int, default=20)
     parser.add_argument("--min-total-bets", type=int, default=100)
+    parser.add_argument(
+        "--label-strategy",
+        choices=("win", "clv_positive", "win_and_clv_positive"),
+        default="win",
+    )
     parser.add_argument("--min-roi-ci-low-pct", type=float, default=0.0)
     parser.add_argument("--min-clv-ci-low-pct", type=float, default=0.0)
     parser.add_argument("--max-drawdown-pct-of-stake", type=float, default=20.0)
+    parser.add_argument(
+        "--selection-objective",
+        choices=("quality", "volume_first"),
+        default="quality",
+    )
+    parser.add_argument("--use-dual-model", action="store_true")
+    parser.add_argument("--dual-combination", choices=("mean", "min"), default="mean")
     parser.add_argument("--output-model")
     return parser.parse_args()
 
 
-def _threshold_score(summary: ThresholdSummary, *, min_meta_bets: int) -> tuple[float, ...]:
+def _threshold_score(
+    summary: ThresholdSummary,
+    *,
+    min_meta_bets: int,
+    objective: str = "quality",
+) -> tuple[float, ...]:
     meta_roi = summary.meta_roi if summary.meta_roi is not None else float("-inf")
     meta_clv = summary.meta_clv if summary.meta_clv is not None else float("-inf")
     baseline_roi = summary.baseline_roi if summary.baseline_roi is not None else float("-inf")
@@ -95,6 +112,8 @@ def _threshold_score(summary: ThresholdSummary, *, min_meta_bets: int) -> tuple[
     roi_delta = meta_roi - baseline_roi if math.isfinite(meta_roi) and math.isfinite(baseline_roi) else float("-inf")
     clv_delta = meta_clv - baseline_clv if math.isfinite(meta_clv) and math.isfinite(baseline_clv) else float("-inf")
     hard_gate = int(summary.meta_bets >= min_meta_bets and meta_roi > 0.0 and meta_clv > 0.0)
+    if objective == "volume_first":
+        return (hard_gate, summary.meta_bets, roi_delta, clv_delta, meta_roi, meta_clv)
     return (hard_gate, roi_delta, clv_delta, meta_roi, meta_clv, summary.meta_bets)
 
 
@@ -129,6 +148,78 @@ def _build_metrics(
     )
 
 
+
+
+def _label_for_strategy(
+    bet: BacktestBet,
+    closing_odds: ClosingOddsMap,
+    strategy: str,
+) -> int:
+    if strategy == "win":
+        return 1 if bet.result == "won" else 0
+    clv_pct = BacktestStabilityAnalyzer._clv_pct(bet, closing_odds)
+    clv_positive = clv_pct is not None and clv_pct > 0.0
+    if strategy == "clv_positive":
+        return 1 if clv_positive else 0
+    if strategy == "win_and_clv_positive":
+        return 1 if bet.result == "won" and clv_positive else 0
+    raise ValueError(f"Unsupported label strategy: {strategy}")
+
+
+def _sample_for_row(
+    row: WalkforwardRow,
+    closing_odds: ClosingOddsMap,
+    label_strategy: str,
+):
+    bet, _match, competition, snapshot_type = row
+    return build_selection_meta_model_sample(
+        bet,
+        competition.name,
+        odds_snapshot_type=snapshot_type,
+        label_override=_label_for_strategy(bet, closing_odds, label_strategy),
+    )
+
+
+def _train_models(
+    rows: list[WalkforwardRow],
+    closing_odds: ClosingOddsMap,
+    label_strategy: str,
+    *,
+    use_dual_model: bool,
+):
+    primary_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in rows]
+    if not primary_samples:
+        raise ValueError("selection meta-model training requires samples")
+    primary_model = SelectionMetaModel.train(primary_samples)
+    if not use_dual_model:
+        return primary_model, None
+    secondary_samples = [_sample_for_row(row, closing_odds, "clv_positive") for row in rows]
+    if not secondary_samples:
+        raise ValueError("selection meta-model training requires samples")
+    secondary_model = SelectionMetaModel.train(secondary_samples)
+    return primary_model, secondary_model
+
+
+def _combined_probability(
+    row: WalkforwardRow,
+    closing_odds: ClosingOddsMap,
+    primary_model: SelectionMetaModel,
+    secondary_model: SelectionMetaModel | None,
+    label_strategy: str,
+    *,
+    dual_combination: str,
+) -> float:
+    sample = _sample_for_row(row, closing_odds, label_strategy)
+    primary_probability = primary_model.predict_probability(sample)
+    if secondary_model is None:
+        return primary_probability
+    secondary_probability = secondary_model.predict_probability(
+        _sample_for_row(row, closing_odds, "clv_positive")
+    )
+    if dual_combination == "min":
+        return min(primary_probability, secondary_probability)
+    return (primary_probability + secondary_probability) / 2.0
+
 def _aggregate_threshold_summary(
     rows: list[WalkforwardRow],
     train_seasons: tuple[str, ...],
@@ -136,6 +227,10 @@ def _aggregate_threshold_summary(
     closing_odds: ClosingOddsMap,
     *,
     min_inner_train_seasons: int,
+    label_strategy: str,
+    objective: str,
+    use_dual_model: bool,
+    dual_combination: str,
 ) -> ThresholdSummary | None:
     seasons = tuple(sorted(train_seasons, key=_season_key))
     baseline_bets = 0
@@ -158,33 +253,35 @@ def _aggregate_threshold_summary(
         if not inner_train_rows or not inner_eval_rows:
             continue
 
-        train_samples = [
-            build_selection_meta_model_sample(
-                bet,
-                competition.name,
-                odds_snapshot_type=snapshot_type,
-            )
-            for bet, _match, competition, snapshot_type in inner_train_rows
-        ]
-        eval_samples = [
-            build_selection_meta_model_sample(
-                bet,
-                competition.name,
-                odds_snapshot_type=snapshot_type,
-            )
-            for bet, _match, competition, snapshot_type in inner_eval_rows
-        ]
+        train_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in inner_train_rows]
+        eval_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in inner_eval_rows]
         if not train_samples or not eval_samples:
             continue
 
         try:
-            model = SelectionMetaModel.train(train_samples)
+            primary_model, secondary_model = _train_models(
+                inner_train_rows,
+                closing_odds,
+                label_strategy,
+                use_dual_model=use_dual_model,
+            )
         except ValueError:
             continue
 
         scored = [
-            (sample, model.predict_probability(sample), bet)
-            for sample, (bet, _match, _competition, _snapshot_type) in zip(eval_samples, inner_eval_rows)
+            (
+                sample,
+                _combined_probability(
+                    row,
+                    closing_odds,
+                    primary_model,
+                    secondary_model,
+                    label_strategy,
+                    dual_combination=dual_combination,
+                ),
+                row[0],
+            )
+            for sample, row in zip(eval_samples, inner_eval_rows)
         ]
         baseline_bets_fold = [bet for _sample, _probability, bet in scored if bet.is_bet]
         meta_bets_fold = [
@@ -240,6 +337,10 @@ def _select_threshold(
     *,
     min_inner_train_seasons: int,
     min_meta_bets: int,
+    label_strategy: str,
+    objective: str,
+    use_dual_model: bool,
+    dual_combination: str,
 ) -> tuple[float, ThresholdSummary | None]:
     best_threshold = thresholds[0]
     best_summary: ThresholdSummary | None = None
@@ -252,10 +353,14 @@ def _select_threshold(
             threshold,
             closing_odds,
             min_inner_train_seasons=min_inner_train_seasons,
+            label_strategy=label_strategy,
+            objective=objective,
+            use_dual_model=use_dual_model,
+            dual_combination=dual_combination,
         )
         if summary is None:
             continue
-        score = _threshold_score(summary, min_meta_bets=min_meta_bets)
+        score = _threshold_score(summary, min_meta_bets=min_meta_bets, objective=objective)
         if score > best_score:
             best_score = score
             best_threshold = threshold
@@ -270,39 +375,45 @@ def _evaluate_outer_fold(
     holdout_season: str,
     threshold: float,
     closing_odds: ClosingOddsMap,
+    label_strategy: str,
+    objective: str,
+    use_dual_model: bool,
+    dual_combination: str,
 ) -> tuple[NestedFoldMetrics, list[BacktestBet]] | None:
     train_rows = [row for row in rows if row[2].season in train_seasons]
     holdout_rows = [row for row in rows if row[2].season == holdout_season]
     if not train_rows or not holdout_rows:
         return None
 
-    train_samples = [
-        build_selection_meta_model_sample(
-            bet,
-            competition.name,
-            odds_snapshot_type=snapshot_type,
-        )
-        for bet, _match, competition, snapshot_type in train_rows
-    ]
-    holdout_samples = [
-        build_selection_meta_model_sample(
-            bet,
-            competition.name,
-            odds_snapshot_type=snapshot_type,
-        )
-        for bet, _match, competition, snapshot_type in holdout_rows
-    ]
+    train_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in train_rows]
+    holdout_samples = [_sample_for_row(row, closing_odds, label_strategy) for row in holdout_rows]
     if not train_samples or not holdout_samples:
         return None
 
     try:
-        model = SelectionMetaModel.train(train_samples)
+        primary_model, secondary_model = _train_models(
+            train_rows,
+            closing_odds,
+            label_strategy,
+            use_dual_model=use_dual_model,
+        )
     except ValueError:
         return None
 
     scored = [
-        (sample, model.predict_probability(sample), bet)
-        for sample, (bet, _match, _competition, _snapshot_type) in zip(holdout_samples, holdout_rows)
+        (
+            sample,
+            _combined_probability(
+                row,
+                closing_odds,
+                primary_model,
+                secondary_model,
+                label_strategy,
+                dual_combination=dual_combination,
+            ),
+            row[0],
+        )
+        for sample, row in zip(holdout_samples, holdout_rows)
     ]
     brier = sum((probability - sample.label) ** 2 for sample, probability, _bet in scored) / len(scored)
 
@@ -367,8 +478,22 @@ def main() -> None:
             closing_odds,
             min_inner_train_seasons=args.min_inner_train_seasons,
             min_meta_bets=args.min_meta_bets,
+            label_strategy=args.label_strategy,
+            objective=args.selection_objective,
+            use_dual_model=args.use_dual_model,
+            dual_combination=args.dual_combination,
         )
-        evaluation = _evaluate_outer_fold(rows, train_seasons, holdout_season, threshold, closing_odds)
+        evaluation = _evaluate_outer_fold(
+            rows,
+            train_seasons,
+            holdout_season,
+            threshold,
+            closing_odds,
+            args.label_strategy,
+            args.selection_objective,
+            args.use_dual_model,
+            args.dual_combination,
+        )
         if evaluation is None:
             continue
         metrics, meta_bets = evaluation
@@ -436,14 +561,7 @@ def main() -> None:
             print(f"- {failure}")
 
     if args.output_model:
-        final_samples = [
-            build_selection_meta_model_sample(
-                bet,
-                competition.name,
-                odds_snapshot_type=snapshot_type,
-            )
-            for bet, _match, competition, snapshot_type in rows
-        ]
+        final_samples = [_sample_for_row(row, closing_odds, args.label_strategy) for row in rows]
         if final_samples:
             model = SelectionMetaModel.train(final_samples)
             model.save(Path(args.output_model))
