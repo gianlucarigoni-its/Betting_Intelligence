@@ -1,11 +1,11 @@
-"""Report historical odds coverage by market and season."""
+"""Report historical odds coverage by market, season and competition type."""
 
 from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
 
-from sqlalchemy import func
+from sqlalchemy import Integer, func
 
 from database.base import SessionLocal
 from database.models import Competition, HistoricalOddSnapshot, Match
@@ -17,6 +17,7 @@ class MarketCoverageRow:
     market_type: str
     opening_snapshots: int
     closing_snapshots: int
+    competition_type: str = "all"
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,39 +27,48 @@ class MarketCoverageSummary:
     seasons_with_closing: int
     opening_snapshots: int
     closing_snapshots: int
+    competition_type: str = "all"
 
 
-def _load_coverage_rows(session) -> list[MarketCoverageRow]:
+def _load_coverage_rows(session, *, competition_type: str | None = None) -> list[MarketCoverageRow]:
     query = (
         session.query(
             Competition.season,
+            Competition.type,
             HistoricalOddSnapshot.market_type,
-            func.sum(func.cast(HistoricalOddSnapshot.is_opening, __import__("sqlalchemy").Integer)),
-            func.sum(func.cast(HistoricalOddSnapshot.is_closing, __import__("sqlalchemy").Integer)),
+            func.sum(func.cast(HistoricalOddSnapshot.is_opening, Integer)),
+            func.sum(func.cast(HistoricalOddSnapshot.is_closing, Integer)),
         )
         .join(Match, Match.competition_id == Competition.id)
         .join(HistoricalOddSnapshot, HistoricalOddSnapshot.match_id == Match.id)
-        .group_by(Competition.season, HistoricalOddSnapshot.market_type)
-        .order_by(Competition.season, HistoricalOddSnapshot.market_type)
     )
+    if competition_type:
+        query = query.filter(Competition.type == competition_type)
+    query = query.group_by(
+        Competition.season,
+        Competition.type,
+        HistoricalOddSnapshot.market_type,
+    ).order_by(Competition.season, Competition.type, HistoricalOddSnapshot.market_type)
     return [
         MarketCoverageRow(
             season=season,
+            competition_type=comp_type,
             market_type=market_type,
             opening_snapshots=int(opening or 0),
             closing_snapshots=int(closing or 0),
         )
-        for season, market_type, opening, closing in query.all()
+        for season, comp_type, market_type, opening, closing in query.all()
     ]
 
 
 def _summaries(rows: list[MarketCoverageRow]) -> list[MarketCoverageSummary]:
-    markets = sorted({row.market_type for row in rows})
+    keys = sorted({(row.competition_type, row.market_type) for row in rows})
     summaries: list[MarketCoverageSummary] = []
-    for market in markets:
-        market_rows = [row for row in rows if row.market_type == market]
+    for competition_type, market in keys:
+        market_rows = [row for row in rows if row.market_type == market and row.competition_type == competition_type]
         summaries.append(
             MarketCoverageSummary(
+                competition_type=competition_type,
                 market_type=market,
                 seasons_with_opening=sum(1 for row in market_rows if row.opening_snapshots > 0),
                 seasons_with_closing=sum(1 for row in market_rows if row.closing_snapshots > 0),
@@ -72,6 +82,7 @@ def _summaries(rows: list[MarketCoverageRow]) -> list[MarketCoverageSummary]:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--market-type", help="Optional market to gate, e.g. OU_2_5")
+    parser.add_argument("--competition-type", help="Optional competition type to gate, e.g. league or international")
     parser.add_argument("--min-opening-seasons", type=int, default=5)
     parser.add_argument("--min-closing-seasons", type=int, default=5)
     parser.add_argument("--min-opening-snapshots", type=int, default=1000)
@@ -82,12 +93,12 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
     with SessionLocal() as session:
-        rows = _load_coverage_rows(session)
+        rows = _load_coverage_rows(session, competition_type=args.competition_type)
 
     print("BY_SEASON")
     for row in rows:
         print(
-            f"{row.season:<10} {row.market_type:<8} "
+            f"{row.season:<10} {row.competition_type:<14} {row.market_type:<8} "
             f"opening={row.opening_snapshots:<5} closing={row.closing_snapshots:<5}"
         )
 
@@ -95,16 +106,20 @@ def main() -> None:
     selected_summary: MarketCoverageSummary | None = None
     for summary in _summaries(rows):
         print(
-            f"{summary.market_type:<8} opening_seasons={summary.seasons_with_opening:<3} "
+            f"{summary.competition_type:<14} {summary.market_type:<8} "
+            f"opening_seasons={summary.seasons_with_opening:<3} "
             f"closing_seasons={summary.seasons_with_closing:<3} "
             f"opening={summary.opening_snapshots:<6} closing={summary.closing_snapshots:<6}"
         )
-        if summary.market_type == args.market_type:
+        if summary.market_type == args.market_type and (
+            args.competition_type is None or summary.competition_type == args.competition_type
+        ):
             selected_summary = summary
 
     if args.market_type:
         if selected_summary is None:
-            print(f"\nCOVERAGE_GATE=FAIL market {args.market_type} not found")
+            scope = f" in {args.competition_type}" if args.competition_type else ""
+            print(f"\nCOVERAGE_GATE=FAIL market {args.market_type}{scope} not found")
             return
         failures: list[str] = []
         if selected_summary.seasons_with_opening < args.min_opening_seasons:
