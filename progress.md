@@ -2144,3 +2144,9 @@ Report:
 - Low-confidence opportunities are now hard-blocked.
 - CLV-positive is the default competitiveness target.
 - Current result: no band promoted; capital ready remains NO.
+
+## Recommendation band selection walk-forward
+
+- Separated selection-specific training and scoring.
+- Current result: no promotable band.
+- Capital ready remains NO.

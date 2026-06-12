@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-bets", type=int, default=100)
     parser.add_argument("--min-clv-count", type=int, default=100)
     parser.add_argument("--target", choices=("win", "clv_positive"), default="clv_positive")
+    parser.add_argument("--pooled-selections", action="store_true")
     return parser.parse_args()
 
 
@@ -63,13 +64,22 @@ def main() -> None:
             train_samples.append(build_selection_meta_model_sample(
                 bet, competition.name, odds_snapshot_type=snapshot, label_override=label_override
             ))
-        if not train_samples or len({sample.label for sample in train_samples}) < 2:
-            continue
-        model = SelectionMetaModel.train(train_samples)
+        models: dict[str, SelectionMetaModel] = {}
+        if args.pooled_selections:
+            if train_samples and len({sample.label for sample in train_samples}) >= 2:
+                models["*"] = SelectionMetaModel.train(train_samples)
+        else:
+            for selection in sorted({sample.selection for sample in train_samples}):
+                selection_samples = [sample for sample in train_samples if sample.selection == selection]
+                if selection_samples and len({sample.label for sample in selection_samples}) >= 2:
+                    models[selection] = SelectionMetaModel.train(selection_samples)
         for bet, match, competition, snapshot in rows:
             if competition.season != holdout_season or not bet.is_bet:
                 continue
             sample = build_selection_meta_model_sample(bet, competition.name, odds_snapshot_type=snapshot)
+            model = models.get("*" if args.pooled_selections else bet.selection)
+            if model is None:
+                continue
             reliability = model.predict_probability(sample)
             closing = closing_odds.get((bet.match_id, bet.market_type, bet.selection, bet.bookmaker_id))
             closing_edge = None
@@ -93,7 +103,8 @@ def main() -> None:
                 closing_edge_pct=closing_edge,
                 market_dislocation_pct=abs(bet.model_probability - bet.bookmaker_probability) * 100.0,
             ))
-            by_band[result.band.value].append(StabilityBetRow(bet=bet, match=match, competition=competition))
+            band_key = f"{bet.selection}:{result.band.value}"
+            by_band[band_key].append(StabilityBetRow(bet=bet, match=match, competition=competition))
 
     criteria = CapitalReadinessCriteria(min_bets=args.min_bets, min_clv_count=args.min_clv_count)
     print("BAND             STATUS  BETS  ROI       ROI_CI_LOW  CLV       CLV_CI_LOW")
