@@ -38,6 +38,20 @@ class TestRecommendationEngine:
         assert result.band == RecommendationBand.AGGRESSIVE
         assert result.recommendation_score > 0
 
+    def test_low_confidence_blocks_high_edge(self) -> None:
+        engine = RecommendationEngine()
+        result = engine.classify(
+            RecommendationInput(
+                value_metrics=make_metrics(15.0),
+                confidence_level=ConfidenceLevel.LOW,
+                market_dislocation_pct=6.0,
+            )
+        )
+
+        assert result.profile == RecommendationProfile.NO_BET
+        assert result.band == RecommendationBand.NO_BET
+        assert result.stake_fraction == 0.0
+
     def test_market_error_profile(self) -> None:
         engine = RecommendationEngine()
         result = engine.classify(

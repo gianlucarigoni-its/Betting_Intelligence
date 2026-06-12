@@ -2137,3 +2137,10 @@ Decision:
 
 Report:
 - `reports/one_x_two_opening_audit_report.md`
+
+## Recommendation band walk-forward gate
+
+- Added leakage-safe temporal validation by operational recommendation band.
+- Low-confidence opportunities are now hard-blocked.
+- CLV-positive is the default competitiveness target.
+- Current result: no band promoted; capital ready remains NO.

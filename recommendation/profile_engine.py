@@ -84,7 +84,11 @@ class RecommendationEngine:
         score = self._score(edge, confidence, market_dislocation, is_favorite)
         stake_fraction = self._stake_fraction(edge, confidence, market_dislocation)
 
-        if edge >= 12.0 and market_dislocation >= 4.0:
+        if confidence == ConfidenceLevel.LOW:
+            profile = RecommendationProfile.NO_BET
+            band = RecommendationBand.NO_BET
+            reasoning = "Affidabilita meta insufficiente: giocata bloccata."
+        elif edge >= 12.0 and market_dislocation >= 4.0 and confidence == ConfidenceLevel.HIGH:
             profile = RecommendationProfile.HIGH_RISK
             band = RecommendationBand.MARKET_ERROR
             reasoning = "Edge molto alto con dislocazione di mercato: errore sfruttabile."
