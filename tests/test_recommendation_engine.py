@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from recommendation.profile_engine import (
     ConfidenceLevel,
+    RecommendationBand,
     RecommendationEngine,
     RecommendationInput,
     RecommendationProfile,
@@ -34,6 +35,22 @@ class TestRecommendationEngine:
         )
 
         assert result.profile == RecommendationProfile.HIGH_RISK
+        assert result.band == RecommendationBand.AGGRESSIVE
+        assert result.recommendation_score > 0
+
+    def test_market_error_profile(self) -> None:
+        engine = RecommendationEngine()
+        result = engine.classify(
+            RecommendationInput(
+                value_metrics=make_metrics(12.5),
+                confidence_level=ConfidenceLevel.HIGH,
+                market_dislocation_pct=4.5,
+            )
+        )
+
+        assert result.profile == RecommendationProfile.HIGH_RISK
+        assert result.band == RecommendationBand.MARKET_ERROR
+        assert result.stake_fraction > 0
 
     def test_value_profile(self) -> None:
         engine = RecommendationEngine()
@@ -45,6 +62,7 @@ class TestRecommendationEngine:
         )
 
         assert result.profile == RecommendationProfile.VALUE
+        assert result.band == RecommendationBand.BALANCED
 
     def test_safe_profile(self) -> None:
         engine = RecommendationEngine()
@@ -56,6 +74,7 @@ class TestRecommendationEngine:
         )
 
         assert result.profile == RecommendationProfile.SAFE
+        assert result.band == RecommendationBand.CONSERVATIVE
 
     def test_no_bet_profile_for_low_edge(self) -> None:
         engine = RecommendationEngine()
@@ -67,3 +86,4 @@ class TestRecommendationEngine:
         )
 
         assert result.profile == RecommendationProfile.NO_BET
+        assert result.band == RecommendationBand.NO_BET
