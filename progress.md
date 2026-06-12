@@ -2150,3 +2150,9 @@ Report:
 - Separated selection-specific training and scoring.
 - Current result: no promotable band.
 - Capital ready remains NO.
+
+## National ELO snapshots
+
+- Added idempotent pre-match ELO snapshot generation for international matches.
+- Generated 50,680 national-team rating snapshots from 25,344 matches.
+- Capital ready remains NO because international odds coverage is still zero.
